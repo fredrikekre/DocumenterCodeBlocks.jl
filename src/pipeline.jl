@@ -109,6 +109,23 @@ function _preceded_by(html, offset, prefix)
     return true
 end
 
+# The anchor id of the docstring enclosing `offset`, or nothing when the offset
+# is not inside one. A docstring renders as `<details class="docstring">
+# <summary id="SLUG">…</summary><section><div>…` (one summary per docstring;
+# aggregated entries share one summary and one anchor), so the block is inside a
+# docstring iff the closest preceding `<details class="docstring"` has not been
+# closed yet. References that resolve back to this anchor are self references
+# and are not linked (see make_resolver).
+function _enclosing_docstring_id(html, offset)
+    open = findprev("<details class=\"docstring\"", html, offset)
+    open === nothing && return nothing
+    close = findprev("</details>", html, offset)
+    close === nothing || first(close) < first(open) || return nothing
+    m = match(r"<summary id=\"([^\"]*)\"", html, first(open))
+    (m === nothing || m.offset > offset) && return nothing
+    return String(m.captures[1])
+end
+
 function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
     seen = Dict{String, Int}()
     # Unique reference targets used on this page (href => target info), collected
@@ -116,7 +133,8 @@ function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
     # tooltip payload (doxygen-style, deduplicated per page).
     tips = Dict{String, Any}()
     # Manual scan (not `replace`) so each match can see its context: a block
-    # directly after `<section><div>` is a docstring's signature header.
+    # directly after `<section><div>` is a docstring's signature header, and a
+    # block inside a docstring suppresses self references.
     io = IOBuffer()
     pos = 1
     for m in eachmatch(BLOCK_RE, html)
@@ -125,19 +143,24 @@ function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
         if _preceded_by(html, m.offset, _DOCSTRING_SIG_PREFIX)
             print(io, transform_signature_block(content))
         else
-            print(io, transform_block(content, plugin, doc, page, seen, tips))
+            self_id = _enclosing_docstring_id(html, m.offset)
+            print(io, transform_block(content, plugin, doc, page, seen, tips, self_id))
         end
         pos = m.offset + ncodeunits(m.match)
     end
     print(io, SubString(html, pos))
     html = String(take!(io))
     # REPL transcripts are highlighted too (so runtime hljs isn't needed at all).
-    html = replace(
-        html, REPL_RE => function (matched)
-            m = match(REPL_RE, matched)
-            return transform_repl_block(String(m.captures[2]), plugin, doc, page, seen, tips)
-        end,
-    )
+    io = IOBuffer()
+    pos = 1
+    for m in eachmatch(REPL_RE, html)
+        print(io, SubString(html, pos, prevind(html, m.offset)))
+        self_id = _enclosing_docstring_id(html, m.offset)
+        print(io, transform_repl_block(String(m.captures[2]), plugin, doc, page, seen, tips, self_id))
+        pos = m.offset + ncodeunits(m.match)
+    end
+    print(io, SubString(html, pos))
+    html = String(take!(io))
     if plugin.popups && !isempty(tips)
         html = replace(html, "</body>" => tips_html(tips) * "</body>"; count = 1)
     end
@@ -157,13 +180,16 @@ function transform_signature_block(content)
     )
 end
 
-function transform_block(content, plugin, doc, page, seen, tips)
+function transform_block(content, plugin, doc, page, seen, tips, self_id = nothing)
     source = block_source(content)
     id = block_id(source, seen)
 
     # Only a real `jldoctest` block gets the script-style `# output` split.
     jldoctest = crc32c(source) in plugin.jldoctests
-    line_htmls = highlight_julia_lines(source, plugin, doc, page; jldoctest = jldoctest, tips = tips)
+    line_htmls = highlight_julia_lines(
+        source, plugin, doc, page;
+        jldoctest = jldoctest, tips = tips, self_id = self_id,
+    )
 
     if !plugin.line_numbers || length(line_htmls) < plugin.min_lines
         # No gutter (line_numbers disabled, or a one-liner), but keep the
@@ -176,10 +202,10 @@ end
 # REPL transcripts (julia-repl blocks and REPL-style jldoctests) are numbered
 # too by default — linkable lines are just as useful in a transcript — but it
 # has its own toggle (`repl_line_numbers`) on top of `line_numbers`.
-function transform_repl_block(content, plugin, doc, page, seen, tips)
+function transform_repl_block(content, plugin, doc, page, seen, tips, self_id = nothing)
     source = block_source(content)
     id = block_id(source, seen)
-    html = highlight_repl_html(source; resolve = make_resolver(plugin, doc, page, tips))
+    html = highlight_repl_html(source; resolve = make_resolver(plugin, doc, page, tips, self_id))
     if plugin.line_numbers && plugin.repl_line_numbers
         line_htmls = split_highlighted(html)
         length(line_htmls) >= plugin.min_lines && return numbered_pre(id, CODE_CLASSES, line_htmls)

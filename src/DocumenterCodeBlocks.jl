@@ -32,9 +32,11 @@ blocks), so no node/`prerender` is needed.
   (the default numbers every block, including one-liners).
 
 The first code block of a docstring — the signature header — is only
-syntax-highlighted: no line numbers, permalink, or reference links (a link
-there would mostly be a self-reference, and headers aren't always valid Julia,
-e.g. `f(x[, y])`).
+syntax-highlighted: no line numbers, permalink, or reference links (headers
+aren't always valid Julia, e.g. `f(x[, y])`). In the rest of a docstring's code
+blocks, references that resolve back to the enclosing docstring itself are not
+linked — the reader is already there — while calls whose arity resolves to a
+different documented method still link.
 
 Build warnings prefixed `CodeBlocks: ` nudge toward tooltip-friendly (and
 generally better) docstrings: they fire — once per problem, and only for

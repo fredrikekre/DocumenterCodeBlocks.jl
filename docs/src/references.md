@@ -38,6 +38,12 @@ As the block above shows, resolution is **arity-aware**: a call with `n`
 positional arguments links to the method documented with `n` arguments,
 not just to the first documented method.
 
+Code blocks inside docstrings get reference links too, with one exception:
+a reference that resolves back to the enclosing docstring itself is left
+unlinked — the reader is already looking at the target. A call whose arity
+resolves to a *different* documented method still links, so an example in
+[`foo(a, b)`](@ref)'s docstring that calls `foo(1)` links to [`foo(a)`](@ref).
+
 # [Hover tooltips](@id tooltips)
 
 Every reference link has a doxygen-style hover tooltip showing the target's

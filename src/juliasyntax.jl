@@ -260,13 +260,18 @@ end
 # `arity` is the call argument count — exact `Int`, `AtLeast` lower bound for
 # splatted calls, or `nothing` for an unknown count; the result is `nothing` or
 # resolve_reference's `(href, targets)` NamedTuple.
+# `self_id` is the anchor id of the enclosing docstring, if the block is inside
+# one: a reference that resolves right back to that anchor is a self reference —
+# the reader is already looking at the target — and is not linked. A call whose
+# arity resolves to a *different* method's docstring still links.
 # Every target that resolves is also recorded (deduplicated by href) in the
 # page-level `tips` collector, which becomes the page's hidden tooltip payload.
-function make_resolver(plugin, doc, page, tips = nothing)
+function make_resolver(plugin, doc, page, tips = nothing, self_id = nothing)
     plugin.reference_links || return nothing
     cache = Dict{Tuple{String, Union{Int, AtLeast, Nothing}}, Any}()
     return function (name, arity)
         r = get!(() -> resolve_reference(name, doc, page, arity, plugin), cache, (name, arity))
+        r !== nothing && self_id !== nothing && r.href == "#" * self_id && return nothing
         if r !== nothing && tips !== nothing
             for t in r.targets
                 get!(tips, t.tipkey, t)
@@ -312,8 +317,11 @@ const _OUTPUT_RE = r"^# output$"m
 # Backend entry point: per-line highlighted HTML fragments for `source`.
 # The `# output` split is applied only when `jldoctest` is true (i.e. the block
 # was `jldoctest`-fenced), matching Documenter's fence-first rule.
-function highlight_julia_lines(source::AbstractString, plugin, doc, page; jldoctest::Bool = false, tips = nothing)
-    resolve = make_resolver(plugin, doc, page, tips)
+function highlight_julia_lines(
+        source::AbstractString, plugin, doc, page;
+        jldoctest::Bool = false, tips = nothing, self_id = nothing,
+    )
+    resolve = make_resolver(plugin, doc, page, tips, self_id)
     m = jldoctest ? match(_OUTPUT_RE, source) : nothing
     html = if m === nothing
         highlight_julia_html(source; resolve = resolve)

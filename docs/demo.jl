@@ -133,7 +133,13 @@ The two-argument method of `foo`, with its own docstring separate from
 ```jldoctest
 julia> foo(10, 20)
 30
+
+julia> foo(1)
+1
 ```
+
+The two-argument call above is a self reference (not linked); the one-argument
+call resolves to the *other* method's docstring and links.
 """
 foo(a, b) = a + b
 

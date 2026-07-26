@@ -197,6 +197,32 @@ const DCB = DocumenterCodeBlocks
             ) == 2
         end
 
+        @testset "self references in docstrings" begin
+            # The <details> element of the docstring anchored at `id`.
+            function docstring_details(html, id)
+                o = findfirst("<summary id=\"$id\">", html)
+                @assert o !== nothing
+                c = findnext("</details>", html, last(o))
+                return SubString(html, first(o), last(c))
+            end
+            selflink(id) = "julia-ref\" href=\"#$id\""
+            # foo(i) inside foo(a)'s docstring is a self reference: not linked.
+            # Other documented names in the same block still link.
+            foo1 = docstring_details(index, "DocumenterCodeBlocks.foo-Tuple{Any}")
+            @test !occursin(selflink("DocumenterCodeBlocks.foo-Tuple{Any}"), foo1)
+            @test occursin("julia-ref\" href=\"#DocumenterCodeBlocks.add_numbers\"", foo1)
+            # foo(a, b)'s docstring (a REPL doctest): the two-argument self call
+            # is not linked, but foo(1) resolves to the other method and links.
+            foo2 = docstring_details(index, "DocumenterCodeBlocks.foo-Tuple{Any, Any}")
+            @test !occursin(selflink("DocumenterCodeBlocks.foo-Tuple{Any, Any}"), foo2)
+            @test occursin(selflink("DocumenterCodeBlocks.foo-Tuple{Any}"), foo2)
+            # Constructor call in the type's own docstring is a self reference.
+            @test !occursin(
+                selflink("DocumenterCodeBlocks.MyType"),
+                docstring_details(index, "DocumenterCodeBlocks.MyType"),
+            )
+        end
+
         @testset "line numbers" begin
             # All zoo blocks are numbered, including the one-liner (min_lines=1).
             @test count("class=\"nohighlight hljs line-numbers\"", zoo) == 6
