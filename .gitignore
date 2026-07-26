@@ -1,0 +1,14 @@
+# Generated docs output
+docs/build/
+test/docsite/build/
+
+# Cloned reference repos (Documenter etc.)
+ext/
+
+# Playwright deps for the browser test suites
+test/playwright/node_modules/
+
+# Environments
+Manifest.toml
+docs/Manifest.toml
+test/docsite/Manifest.toml

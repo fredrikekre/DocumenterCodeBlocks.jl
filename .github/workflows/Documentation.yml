@@ -1,0 +1,38 @@
+---
+name: Documentation
+on:
+  push:
+    branches:
+      - 'main'
+      - 'release-'
+    tags:
+      - '*'
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  docs:
+    name: Build and deploy documentation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Instantiate the docs environment
+        run: |
+          julia --project=docs -e '
+            import Pkg
+            Pkg.develop(Pkg.PackageSpec(path = pwd()))
+            Pkg.instantiate()'
+      - name: Build and deploy
+        run: julia --project=docs docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.SSH_PRIVATE_KEY }}

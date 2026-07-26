@@ -1,0 +1,15 @@
+name = "DocumenterCodeBlocks"
+uuid = "b6400b83-267f-4b55-9fd8-bffc853bdfd8"
+version = "1.0.0"
+authors = ["Fredrik Ekre <ekrefredrik@gmail.com>"]
+
+[deps]
+CRC32c = "8bf52ea8-c179-5cab-976a-9e18b702a9bc"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+JuliaSyntax = "70703baa-626e-46a2-a12c-08ffd08c73b4"
+
+[compat]
+CRC32c = "1"
+Documenter = "1.17"
+JuliaSyntax = "1"
+julia = "1.10"
