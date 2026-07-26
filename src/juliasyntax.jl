@@ -68,6 +68,10 @@ function _leaf_face(k, role, name, trivia)
         Base.isoperator(name) && return :operator
         return role === :none ? :none : role
     end
+    # Assignment is syntax, not a function, so it takes the keyword face rather
+    # than the operator face. Updating assignments tokenize as two tokens
+    # (`+=` is `+` then `=`), so `a += 1` comes out two-tone.
+    k == K"=" && return :keyword
     _JS.is_operator(k) && return :operator
     # brackets/commas etc. inside a type region inherit the type color; never trivia.
     (role !== :none && !trivia) && return role

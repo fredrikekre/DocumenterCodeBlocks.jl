@@ -8,7 +8,16 @@ const DCB = DocumenterCodeBlocks
     @testset "highlight_julia_html" begin
         h = DCB.highlight_julia_html
         @test h("x = 1") ==
-            "x <span class=\"julia-operator\">=</span> <span class=\"julia-number\">1</span>"
+            "x <span class=\"julia-keyword\">=</span> <span class=\"julia-number\">1</span>"
+        # Updating assignment renders two-tone: `+` is an operator token, `=` is
+        # a separate assignment token. Broadcast `.=` is a single `=`-kind token.
+        @test occursin(
+            "<span class=\"julia-operator\">+</span><span class=\"julia-keyword\">=</span>",
+            h("a += 1"),
+        )
+        @test occursin("<span class=\"julia-keyword\">.=</span>", h("a .= 1"))
+        # Keyword arguments use `=` too.
+        @test occursin("<span class=\"julia-keyword\">=</span>", h("f(x = 1)"))
         # Word-operators tokenize as Identifier but must still be colored.
         @test h("a * b") == "a <span class=\"julia-operator\">*</span> b"
         @test occursin("<span class=\"julia-operator\">in</span>", h("for i in xs\nend"))
