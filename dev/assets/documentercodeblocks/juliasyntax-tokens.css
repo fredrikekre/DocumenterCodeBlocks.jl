@@ -8,7 +8,7 @@
   --jl-comment: #6a737d;
   --jl-number: #005cc5;
   --jl-macro: #6f42c1;
-  --jl-operator: #24292e;
+  --jl-operator: var(--jl-function);
   --jl-function: #4078f2;
   --jl-type: #c18401;
 }
@@ -18,7 +18,6 @@ html.theme--documenter-dark {
   --jl-comment: #8b949e;
   --jl-number: #79c0ff;
   --jl-macro: #d2a8ff;
-  --jl-operator: #c9d1d9;
   --jl-function: #61afef;
   --jl-type: #e5c07b;
 }
@@ -28,7 +27,6 @@ html.theme--catppuccin-latte {
   --jl-comment: #8c8fa1;
   --jl-number: #fe640b;
   --jl-macro: #1e66f5;
-  --jl-operator: #4c4f69;
   --jl-function: #1e66f5;
   --jl-type: #df8e1d;
 }
@@ -38,7 +36,6 @@ html.theme--catppuccin-frappe {
   --jl-comment: #737994;
   --jl-number: #ef9f76;
   --jl-macro: #8caaee;
-  --jl-operator: #c6d0f5;
   --jl-function: #8caaee;
   --jl-type: #e5c890;
 }
@@ -48,7 +45,6 @@ html.theme--catppuccin-macchiato {
   --jl-comment: #6e738d;
   --jl-number: #f5a97f;
   --jl-macro: #8aadf4;
-  --jl-operator: #cad3f5;
   --jl-function: #8aadf4;
   --jl-type: #eed49f;
 }
@@ -58,7 +54,6 @@ html.theme--catppuccin-mocha {
   --jl-comment: #6c7086;
   --jl-number: #fab387;
   --jl-macro: #89b4fa;
-  --jl-operator: #cdd6f4;
   --jl-function: #89b4fa;
   --jl-type: #f9e2af;
 }
