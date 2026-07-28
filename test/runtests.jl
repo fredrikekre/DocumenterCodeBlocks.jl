@@ -1,7 +1,15 @@
 using Test
 using Logging: Logging
+using Documenter: Documenter
 using DocumenterCodeBlocks
 const DCB = DocumenterCodeBlocks
+
+# Whether the Documenter in use emits per-docstring sub-anchor ids on the
+# `<section>`s of aggregated docstring entries (DocsNode.subslugs). With it,
+# arity-narrowed references link straight to the matched docstring; without it
+# (older Documenter) they fall back to the aggregate's shared anchor with
+# `@arity-` variant tip keys.
+const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
 
 @testset "DocumenterCodeBlocks" begin
 
@@ -174,9 +182,27 @@ const DCB = DocumenterCodeBlocks
             # baz: docstring without prose → tip has no brief element.
             baz = match(r"<div class=\"ref-tip\" data-for=\"[^\"]*\.baz\">(.*?)</div>"s, refs)
             @test baz !== nothing && !occursin("ref-tip-brief", baz.captures[1])
-            # Aggregated docstring: shared href, per-arity variant tips.
-            @test occursin("combine@arity-2", refs) && occursin("combine@arity-3", refs)
-            @test count("data-ref-tip=", refs) >= 2
+            combine_hrefs = link_hrefs(refs, "combine")
+            if SUBANCHORS
+                # Aggregated docstring: arity-narrowed call sites link to the
+                # per-docstring sub-anchors of the aggregate, and their tips
+                # are keyed by those (already arity-specific) hrefs; the
+                # splatted call keeps the aggregate's shared anchor. No
+                # `@arity-` variant keys or `data-ref-tip` attributes are
+                # needed once sub-anchors exist.
+                @test count(h -> endswith(h, "combine-Tuple{Any, Any}"), combine_hrefs) == 1
+                @test count(h -> endswith(h, "combine-Tuple{Any, Any, Any}"), combine_hrefs) == 1
+                @test count(h -> endswith(h, ".combine"), combine_hrefs) == 1
+                @test occursin(r"data-for=\"[^\"]*combine-Tuple\{Any, Any\}\"", refs)
+                @test occursin(r"data-for=\"[^\"]*combine-Tuple\{Any, Any, Any\}\"", refs)
+                @test !occursin("@arity-", refs)
+                @test !occursin("data-ref-tip=", refs)
+            else
+                # Without sub-anchors: shared href, per-arity variant tips.
+                @test all(h -> endswith(h, ".combine"), combine_hrefs)
+                @test occursin("combine@arity-2", refs) && occursin("combine@arity-3", refs)
+                @test count("data-ref-tip=", refs) >= 2
+            end
             # Multiline signature headers collapse to one-line list labels.
             @test occursin("fit(x::AbstractVector, y::AbstractVector)", refs)
         end
@@ -186,15 +212,17 @@ const DCB = DocumenterCodeBlocks
             # no id/gutter/links.
             @test occursin("<section><div><pre><code class=\"nohighlight hljs\">", index)
             @test !occursin("<section><div><pre id=", index)
-            # Both headers of the aggregated `combine` entry are stripped.
+            # Both headers of the aggregated `combine` entry are stripped —
+            # with sub-anchors their `<section>`s carry per-docstring ids.
             @test length(
                 collect(
                     eachmatch(
-                        r"<section><div><pre><code class=\"nohighlight hljs\"><span class=\"julia-funcall\">combine</span>",
+                        r"<section( id=\"[^\"]*combine-Tuple\{[^\"]*\")?><div><pre><code class=\"nohighlight hljs\"><span class=\"julia-funcall\">combine</span>",
                         index,
                     )
                 )
             ) == 2
+            @test occursin("<section id=\"", index) == SUBANCHORS
         end
 
         @testset "self references in docstrings" begin
@@ -221,6 +249,19 @@ const DCB = DocumenterCodeBlocks
                 selflink("DocumenterCodeBlocks.MyType"),
                 docstring_details(index, "DocumenterCodeBlocks.MyType"),
             )
+            # Inside one docstring of the aggregated `combine` entry, the
+            # same-arity call is a self reference (its sub-anchor is the
+            # enclosing section), while the three-argument call links to the
+            # sibling docstring's sub-anchor. Without sub-anchors both calls
+            # resolve to the aggregate's own anchor and stay unlinked.
+            combine = docstring_details(index, "DocumenterCodeBlocks.combine")
+            @test !occursin(selflink("DocumenterCodeBlocks.combine-Tuple{Any, Any}"), combine)
+            @test !occursin(selflink("DocumenterCodeBlocks.combine"), combine)
+            if SUBANCHORS
+                @test occursin(selflink("DocumenterCodeBlocks.combine-Tuple{Any, Any, Any}"), combine)
+            else
+                @test !occursin("julia-ref\" href=\"#DocumenterCodeBlocks.combine", combine)
+            end
         end
 
         @testset "line numbers" begin

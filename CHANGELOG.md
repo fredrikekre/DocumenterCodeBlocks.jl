@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+ - Reference links into aggregated docstrings (a bare `@docs Foo.bar` entry
+   holding several method docstrings) now use the per-docstring sub-anchors
+   that Documenter emits on each docstring `<section>`: a call site whose arity
+   singles out one docstring links directly to that docstring (e.g.
+   `#Foo.bar-Tuple{Any, Any}`) instead of the top of the aggregate. Tooltips
+   are keyed by these (already arity-specific) hrefs, so the `@arity-` variant
+   tip keys and the `data-ref-tip` attribute are only used as a fallback when
+   sub-anchors are unavailable (older Documenter versions, or when several
+   docstrings still match). Self-reference suppression is sub-anchor aware:
+   inside one docstring of an aggregate, a same-arity self call stays unlinked
+   while calls resolving to a sibling docstring's sub-anchor still link.
+
 ## [v1.0.0] - 2026-07-26
 
 First stable release of DocumenterCodeBlocks.jl — a Documenter.jl plugin
