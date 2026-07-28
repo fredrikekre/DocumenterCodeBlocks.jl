@@ -58,6 +58,16 @@ html.theme--catppuccin-mocha {
   --jl-type: #f9e2af;
 }
 
+/* iOS Safari's text autosizer inflates the font of wide text blocks — which
+ * the line-numbers markup (per-line `display: block` spans in a
+ * `width: max-content` container) looks like, unlike the single inline flow of
+ * stock Documenter code blocks. The Documenter themes set only the unprefixed
+ * `text-size-adjust: 100%`, which iOS ignores, so pin it here. */
+pre {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 /* `code` (not `pre code`) so the reference-tooltip signatures — bare <code>
  * elements, see ref-popup.js — are colored too. The julia-* classes are only
  * ever emitted by this plugin, so the wider scope cannot clash. */
