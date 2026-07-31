@@ -209,7 +209,14 @@ function check(name, ok, extra) {
   // --- aggregated docstring: arity-matched signature selection -------------
   // Arity-narrowed call sites link to the per-docstring sub-anchor of the
   // aggregated entry; the splatted call keeps the aggregate's own anchor.
-  const combine2Link = page.locator('a.julia-ref[href$="combine-Tuple{Any, Any}"]').first();
+  // Without sub-anchors (Documenter has no DocsNode.subslugs), arity-narrowed
+  // call sites keep the aggregate's href and carry their variant tip key in
+  // data-ref-tip instead — the tooltip content is identical either way, so
+  // only the locators differ (mirrors SUBANCHORS in runtests.jl).
+  const subanchors = (await page.locator('a.julia-ref[href*="combine-Tuple"]').count()) > 0;
+  const combine2Link = subanchors
+    ? page.locator('a.julia-ref[href$="combine-Tuple{Any, Any}"]').first()
+    : page.locator('a.julia-ref[data-ref-tip$="combine@arity-2"]').first();
   check("arity-2 aggregate tooltip appears", await hoverAndTip(combine2Link));
   {
     const sig = await popup.locator(".ref-tip-sig").innerText().catch(() => "");
@@ -220,7 +227,9 @@ function check(name, ok, extra) {
       JSON.stringify({ sig, brief })
     );
   }
-  const combine3Link = page.locator('a.julia-ref[href$="combine-Tuple{Any, Any, Any}"]').first();
+  const combine3Link = subanchors
+    ? page.locator('a.julia-ref[href$="combine-Tuple{Any, Any, Any}"]').first()
+    : page.locator('a.julia-ref[data-ref-tip$="combine@arity-3"]').first();
   check("arity-3 aggregate tooltip appears", await hoverAndTip(combine3Link));
   {
     const sig = await popup.locator(".ref-tip-sig").innerText().catch(() => "");
@@ -231,7 +240,7 @@ function check(name, ok, extra) {
       JSON.stringify({ sig, brief })
     );
   }
-  const combineAggLink = page.locator('a.julia-ref[href$="combine"]').first();
+  const combineAggLink = page.locator('a.julia-ref[href$="combine"]:not([data-ref-tip])').first();
   check("unknown-arity aggregate tooltip appears", await hoverAndTip(combineAggLink));
   {
     const sig = await popup.locator(".ref-tip-sig").innerText().catch(() => "");
