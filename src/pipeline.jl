@@ -52,6 +52,16 @@ end
 const BLOCK_RE = r"<pre><code class=\"language-julia( hljs)?\">(.*?)</code></pre>"s
 const REPL_RE = r"<pre><code class=\"language-julia-repl( hljs)?\">(.*?)</code></pre>"s
 
+# An `@repl` block (Documenter's MultiCodeBlock) renders as ONE <pre> holding
+# alternating `style="display:block;"` <code> children — each input a
+# `language-julia-repl` element, each output ANSI-rendered as
+# `nohighlight hljs ansi` — with a <br/> before each input after the first.
+# Neither BLOCK_RE nor REPL_RE matches these (the style attribute breaks them),
+# so they get their own pass (issue #3). The segment regex tokenizes the
+# captured children; only display:block code and <br/> can appear at that level.
+const MULTIREPL_RE = r"<pre>((?:<code class=\"[^\"]+\" style=\"display:block;\">.*?</code>|<br/>)+)</pre>"s
+const MULTIREPL_SEG_RE = r"<code class=\"([^\"]+)\" style=\"display:block;\">(.*?)</code>|<br/>"s
+
 function Selectors.runner(::Type{CodeBlocksStep}, doc::Documenter.Document)
     plugin = Documenter.getplugin(doc, CodeBlocks)
     "julia" in plugin.languages || return
@@ -185,6 +195,20 @@ function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
     end
     print(io, SubString(html, pos))
     html = String(take!(io))
+    # `@repl` blocks (MultiCodeBlock pres) are rebuilt into the same transcript
+    # form. A multiblock with no julia-repl input is not an `@repl` block and is
+    # left untouched (transform returns nothing).
+    io = IOBuffer()
+    pos = 1
+    for m in eachmatch(MULTIREPL_RE, html)
+        print(io, SubString(html, pos, prevind(html, m.offset)))
+        self_ids = _enclosing_docstring_ids(html, m.offset)
+        new = transform_multirepl_block(m.captures[1], plugin, doc, page, seen, tips, self_ids)
+        print(io, new === nothing ? m.match : new)
+        pos = m.offset + ncodeunits(m.match)
+    end
+    print(io, SubString(html, pos))
+    html = String(take!(io))
     if plugin.popups && !isempty(tips)
         html = replace(html, "</body>" => tips_html(tips) * "</body>"; count = 1)
     end
@@ -230,6 +254,44 @@ function transform_repl_block(content, plugin, doc, page, seen, tips, self_ids =
     source = block_source(content)
     id = block_id(source, seen)
     html = highlight_repl_html(source; resolve = make_resolver(plugin, doc, page, tips, self_ids))
+    if plugin.line_numbers && plugin.repl_line_numbers
+        line_htmls = split_highlighted(html)
+        length(line_htmls) >= plugin.min_lines && return numbered_pre(id, CODE_CLASSES, line_htmls)
+    end
+    return plain_pre(id, CODE_CLASSES, html)
+end
+
+# Rebuild an `@repl` MultiCodeBlock <pre> as one transcript block: input
+# segments are re-highlighted from their recovered source (prompt spans, Julia
+# highlighting, reference links, exactly like a julia-repl fence); output
+# segments keep their inner HTML verbatim, re-wrapped in `<span class="ansi">`
+# so the themes' `.ansi span.sgrNN` color rules still apply after the original
+# `<code class="… ansi">` wrapper is gone; the <br/> Documenter puts between
+# iterations becomes the transcript's blank line. Returns nothing when no
+# segment is julia-repl input (some other language's multiblock).
+function transform_multirepl_block(inner, plugin, doc, page, seen, tips, self_ids = nothing)
+    segments = collect(eachmatch(MULTIREPL_SEG_RE, inner))
+    isrepl(m) = m.captures[1] !== nothing && startswith(m.captures[1], "language-julia-repl")
+    any(isrepl, segments) || return nothing
+    resolve = make_resolver(plugin, doc, page, tips, self_ids)
+    htmls = String[]
+    sources = String[]
+    for m in segments
+        if m.captures[1] === nothing            # <br/>
+            push!(htmls, "")
+            push!(sources, "")
+        else
+            source = block_source(m.captures[2])
+            push!(sources, source)
+            if isrepl(m)
+                push!(htmls, highlight_repl_html(source; resolve = resolve))
+            else
+                push!(htmls, string("<span class=\"ansi\">", m.captures[2], "</span>"))
+            end
+        end
+    end
+    id = block_id(join(sources, "\n"), seen)
+    html = join(htmls, "\n")
     if plugin.line_numbers && plugin.repl_line_numbers
         line_htmls = split_highlighted(html)
         length(line_htmls) >= plugin.min_lines && return numbered_pre(id, CODE_CLASSES, line_htmls)

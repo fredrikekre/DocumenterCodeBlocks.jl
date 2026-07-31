@@ -43,8 +43,9 @@ T = eltype(Vector{Float64})
 
 `julia-repl` blocks are highlighted too: prompts are marked, the input
 expressions get full highlighting (and [reference links](@ref references)),
-and output is left plain. Multi-line input is handled by parsing until the
-expression is complete:
+and output is left plain. Executed `@repl` blocks are rebuilt into the same
+transcript form (their ANSI-colored output is kept as-is). Multi-line input
+is handled by parsing until the expression is complete:
 
 ```julia-repl
 julia> function double(x)

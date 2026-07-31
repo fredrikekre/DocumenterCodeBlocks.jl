@@ -273,6 +273,24 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             @test occursin(r"line-numbers[^>]*>.{0,200}julia-prompt"s, skip)
         end
 
+        @testset "@repl blocks" begin
+            # The @repl multiblock (one <pre> of display:block <code> children)
+            # is rebuilt into a transcript block like a julia-repl fence: no
+            # trace of the original markup survives (issue #3).
+            @test !occursin("<code class=\"language-julia-repl", skip)
+            @test !occursin("style=\"display:block;\"", skip)
+            # Input is highlighted (`import`/`20` occur only in the @repl block)
+            # and reference-linked.
+            @test occursin("julia-keyword\">import</span>", skip)
+            @test occursin(
+                r"julia-ref\" href=\"[^\"]*add_numbers\"[^>]*>DocumenterCodeBlocks<span class=\"julia-operator\">\.</span><span class=\"julia-funcall\">add_numbers</span></a>\(<span class=\"julia-number\">20</span>",
+                skip,
+            )
+            # Output segments keep their content, wrapped for ANSI color rules.
+            @test occursin("<span class=\"ansi\">3</span>", skip)
+            @test occursin("<span class=\"ansi\">42</span>", skip)
+        end
+
         @testset "doctest handling" begin
             # Script-style jldoctest: input highlighted, `# output` and below plain.
             @test occursin("foo and add_numbers are functions", doct)

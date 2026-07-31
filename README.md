@@ -18,7 +18,7 @@ Enhanced code blocks for [Documenter.jl](https://github.com/JuliaDocs/Documenter
   list instead.
 - **Syntax highlighting** of Julia code blocks at build time with
   [JuliaSyntax.jl](https://github.com/JuliaLang/JuliaSyntax.jl) instead of highlight.js.
-  Works for `julia`, `julia-repl`, and `jldoctest` blocks alike.
+  Works for `julia`, `julia-repl`, `jldoctest`, and executed `@repl` blocks alike.
 - **Docstring-quality warnings** that nudge toward tooltip-friendly docstrings (leading
   signature block, short first sentence).
 

@@ -16,6 +16,19 @@ julia> greet()
 Hello World!
 ```
 
+## @repl
+
+An executed REPL block. Documenter renders it as a single `<pre>` of
+`display:block` `<code>` children (inputs `language-julia-repl`, outputs
+ANSI-rendered) which the plugin rebuilds into one transcript block: prompts and
+input highlighted (with reference links), output kept verbatim.
+
+```@repl
+import DocumenterCodeBlocks
+DocumenterCodeBlocks.add_numbers(1, 2)
+x = DocumenterCodeBlocks.add_numbers(20, 22)
+```
+
 ## @example output
 
 An executed example. The input block is a normal Julia block, but the **output**
