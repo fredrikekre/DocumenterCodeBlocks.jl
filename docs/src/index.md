@@ -14,7 +14,7 @@ enhances Julia code blocks:
   Ambiguous references show the candidate-method list.
 - **[Syntax highlighting](@ref highlighting)** of Julia code blocks at build
   time with [JuliaSyntax.jl](https://github.com/JuliaLang/JuliaSyntax.jl).
-  Works for `julia`, `julia-repl`, and `jldoctest` blocks alike.
+  Works for `julia`, `julia-repl`, `jldoctest`, and executed `@repl` blocks alike.
 - **[Docstring-quality warnings](@ref warnings)** that nudge toward
   tooltip-friendly docstrings.
 

@@ -273,8 +273,15 @@ wordy(x) = x   # >200 chars before the first sentence boundary → clipped brief
 Combine two things. `combine` is included in the docs with a bare
 `@docs DocumenterCodeBlocks.combine` entry (no signature), so this docstring
 and the three-argument one render **aggregated inside one docstring
-`<details>`** — but each docstring still gets its own `<section><div>`, so
-both signature headers receive the header treatment (highlight only).
+`<details>`** — but each docstring still gets its own `<section><div>` (with a
+per-docstring sub-anchor id), so both signature headers receive the header
+treatment (highlight only).
+
+# Examples
+```julia
+combine(1, 2)      # same arity: a self reference, not linked
+combine(1, 2, 3)   # links to the sibling docstring's sub-anchor
+```
 """
 combine(a, b) = (a, b)
 

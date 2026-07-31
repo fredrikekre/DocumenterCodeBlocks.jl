@@ -207,28 +207,41 @@ function check(name, ok, extra) {
   }
 
   // --- aggregated docstring: arity-matched signature selection -------------
-  const combineLinks = page.locator('a.julia-ref[href$="combine"]');
-  check("arity-2 aggregate tooltip appears", await hoverAndTip(combineLinks.nth(0)));
+  // Arity-narrowed call sites link to the per-docstring sub-anchor of the
+  // aggregated entry; the splatted call keeps the aggregate's own anchor.
+  // Without sub-anchors (Documenter has no DocsNode.subslugs), arity-narrowed
+  // call sites keep the aggregate's href and carry their variant tip key in
+  // data-ref-tip instead — the tooltip content is identical either way, so
+  // only the locators differ (mirrors SUBANCHORS in runtests.jl).
+  const subanchors = (await page.locator('a.julia-ref[href*="combine-Tuple"]').count()) > 0;
+  const combine2Link = subanchors
+    ? page.locator('a.julia-ref[href$="combine-Tuple{Any, Any}"]').first()
+    : page.locator('a.julia-ref[data-ref-tip$="combine@arity-2"]').first();
+  check("arity-2 aggregate tooltip appears", await hoverAndTip(combine2Link));
   {
     const sig = await popup.locator(".ref-tip-sig").innerText().catch(() => "");
     const brief = await popup.locator(".ref-tip-brief").innerText().catch(() => "");
     check(
-      "arity 2 → only combine(a, b), its brief",
+      "arity 2 → only combine(a, b), its brief, sub-anchor href",
       sig.trim() === "combine(a, b)" && /Combine two things\./.test(brief),
       JSON.stringify({ sig, brief })
     );
   }
-  check("arity-3 aggregate tooltip appears", await hoverAndTip(combineLinks.nth(1)));
+  const combine3Link = subanchors
+    ? page.locator('a.julia-ref[href$="combine-Tuple{Any, Any, Any}"]').first()
+    : page.locator('a.julia-ref[data-ref-tip$="combine@arity-3"]').first();
+  check("arity-3 aggregate tooltip appears", await hoverAndTip(combine3Link));
   {
     const sig = await popup.locator(".ref-tip-sig").innerText().catch(() => "");
     const brief = await popup.locator(".ref-tip-brief").innerText().catch(() => "");
     check(
-      "arity 3 → only combine(a, b, c), its brief (same href, variant tip)",
+      "arity 3 → only combine(a, b, c), its brief, sub-anchor href",
       sig.trim() === "combine(a, b, c)" && /Combine three things\./.test(brief),
       JSON.stringify({ sig, brief })
     );
   }
-  check("unknown-arity aggregate tooltip appears", await hoverAndTip(combineLinks.nth(2)));
+  const combineAggLink = page.locator('a.julia-ref[href$="combine"]:not([data-ref-tip])').first();
+  check("unknown-arity aggregate tooltip appears", await hoverAndTip(combineAggLink));
   {
     const sig = await popup.locator(".ref-tip-sig").innerText().catch(() => "");
     check(

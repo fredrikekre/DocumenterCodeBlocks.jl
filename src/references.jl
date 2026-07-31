@@ -85,19 +85,33 @@ function resolve_reference(name::AbstractString, doc, page, arity = nothing, plu
     if length(candidates) == 1 || !(object in candidates)
         object = first(candidates)
     end
+    targets = [_target_info(doc, o, from, prettyurls, arity, plugin) for o in candidates]
+    # A single target's href is authoritative: an arity-narrowed aggregated
+    # entry links to the matched docstring's sub-anchor, not the aggregate.
     return (
-        href = _object_href(doc, object, from, prettyurls),
-        targets = [_target_info(doc, o, from, prettyurls, arity, plugin) for o in candidates],
+        href = length(targets) == 1 ? only(targets).href :
+            _object_href(doc, object, from, prettyurls),
+        targets = targets,
     )
 end
 
 # Page-relative URL (incl. #fragment) of a documented object, seen from the page
-# whose output URL is `from`.
-function _object_href(doc, object, from, prettyurls)
+# whose output URL is `from`. `fragment` overrides the object's own anchor —
+# used to target a per-docstring sub-anchor within an aggregated entry.
+function _object_href(doc, object, from, prettyurls, fragment = nothing)
     docsnode = doc.internal.objects[object]
     to = _get_url(page_key(doc, docsnode.page), prettyurls)
     url = _pretty_url(_relhref(from, to), prettyurls)
-    return string(url, "#", Documenter.slugify(object))
+    return string(url, "#", something(fragment, Documenter.slugify(object)))
+end
+
+# The per-docstring anchor id (DocsNode.subslugs, Documenter ≥ the sub-anchor
+# feature) for docstring `idx` of an aggregated entry, or `nothing` when
+# unavailable (older Documenter, out-of-range index, or no id for that entry).
+function _subslug(docsnode, idx)
+    (docsnode === nothing || idx === nothing) && return nothing
+    hasfield(typeof(docsnode), :subslugs) || return nothing
+    return idx <= length(docsnode.subslugs) ? docsnode.subslugs[idx] : nothing
 end
 
 # The link is ambiguous exactly when `Documenter.find_object` fell back to "the
@@ -180,10 +194,14 @@ _arity_str(arity::AtLeast) = string("at least ", arity.n, arity.n == 1 ? " argum
 # Everything the hover tooltip needs about one target: `sig` is the signature
 # block (possibly multiline; arity-matched within an aggregated docstring),
 # `label` a collapsed one-line form (for disambiguation lists), `brief` the
-# docstring's first sentence or `nothing`. `tipkey` identifies the tip payload:
-# normally the href, but an aggregate narrowed by call arity gets a variant key
-# — the page-level tip dict is deduplicated by key, and two call sites of
-# different arity need different narrowed tips for the SAME href.
+# docstring's first sentence or `nothing`. When arity narrowing singles out one
+# docstring of an aggregated entry, `href` targets that docstring's sub-anchor
+# (DocsNode.subslugs) instead of the aggregate's shared anchor. `tipkey`
+# identifies the tip payload: normally the href (sub-anchor hrefs are already
+# arity-specific), but a narrowed aggregate WITHOUT a sub-anchor (older
+# Documenter, or several docstrings still matching) gets a variant key — the
+# page-level tip dict is deduplicated by key, and two call sites of different
+# arity need different narrowed tips for the SAME href.
 function _target_info(doc, object, from, prettyurls, arity = nothing, plugin = nothing)
     docsnode = get(doc.internal.objects, object, nothing)
     info = _sig_and_brief(docsnode, object, arity, plugin)
@@ -211,10 +229,12 @@ function _target_info(doc, object, from, prettyurls, arity = nothing, plugin = n
                 "mid-sentence. Start the docstring with one short summary sentence.",
         )
     end
-    href = _object_href(doc, object, from, prettyurls)
+    subslug = _subslug(docsnode, info.subidx)
+    href = _object_href(doc, object, from, prettyurls, subslug)
     return (
         href = href,
-        tipkey = info.narrowed ? string(href, "@arity-", _arity_key(arity)) : href,
+        tipkey = info.narrowed && subslug === nothing ?
+            string(href, "@arity-", _arity_key(arity)) : href,
         label = info.label,
         sig = info.sig,
         brief = info.brief,
@@ -248,11 +268,14 @@ end
 #   would otherwise show as just `foo(` in disambiguation lists).
 # - Brief: the first paragraph of the narrowed docstring(s), flattened to plain
 #   text and clipped to its first sentence; `nothing` without prose.
-# Returns (sig, label, brief, narrowed, synthesized, brief_clipped) —
+# Returns (sig, label, brief, narrowed, subidx, synthesized, brief_clipped) —
 # `narrowed` says arity selection actually dropped something (the caller keys
-# the tip payload on it); the last two feed the docstring-quality warnings.
+# the tip payload on it), and `subidx` is the docstring's index within the
+# entry when the narrowing singled out exactly one (else `nothing`), so the
+# caller can link to its sub-anchor; the last two feed the docstring-quality
+# warnings.
 function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing)
-    docs = @NamedTuple{sig::Union{Nothing, String}, brief::Union{Nothing, String}, clipped::Bool, typesig::Any}[]
+    docs = @NamedTuple{sig::Union{Nothing, String}, brief::Union{Nothing, String}, clipped::Bool, typesig::Any, idx::Int}[]
     if docsnode !== nothing
         for (i, md) in enumerate(docsnode.mdasts)
             sig = nothing
@@ -270,7 +293,7 @@ function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing)
             end
             typesig = i <= length(docsnode.results) ?
                 get(docsnode.results[i].data, :typesig, Union{}) : Union{}
-            push!(docs, (sig = sig, brief = brief, clipped = clipped, typesig = typesig))
+            push!(docs, (sig = sig, brief = brief, clipped = clipped, typesig = typesig, idx = i))
         end
     end
     narrowed = false
@@ -298,6 +321,7 @@ function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing)
     label = _collapse_sig(isempty(sigs) ? sig : first(sigs))
     return (
         sig = sig, label = label, brief = brief, narrowed = narrowed,
+        subidx = narrowed && length(docs) == 1 ? only(docs).idx : nothing,
         synthesized = isempty(sigs), brief_clipped = brief_clipped,
     )
 end

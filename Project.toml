@@ -1,6 +1,6 @@
 name = "DocumenterCodeBlocks"
 uuid = "b6400b83-267f-4b55-9fd8-bffc853bdfd8"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Fredrik Ekre <ekrefredrik@gmail.com>"]
 
 [deps]
