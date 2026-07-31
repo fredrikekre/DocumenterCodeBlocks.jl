@@ -23,12 +23,12 @@ select away.
 
 ## Installation
 
-The package is not registered (yet). Install it directly from GitHub:
+Install the package from the General registry:
 
 ```julia-repl
 julia> import Pkg
 
-julia> Pkg.add(url = "https://github.com/fredrikekre/DocumenterCodeBlocks.jl")
+julia> Pkg.add("DocumenterCodeBlocks")
 ```
 
 ## Usage

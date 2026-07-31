@@ -17,7 +17,7 @@ A plain `julia` block:
 function mean_positive(xs::AbstractVector{<:Real})
     total, n = 0.0, 0
     for x in xs
-        x > 0 || continue     # word-operators like `>` highlight too
+        x > 0 || continue
         total += x
         n += 1
     end
