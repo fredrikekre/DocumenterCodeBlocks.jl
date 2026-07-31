@@ -22,6 +22,18 @@ Enhanced code blocks for [Documenter.jl](https://github.com/JuliaDocs/Documenter
 - **Docstring-quality warnings** that nudge toward tooltip-friendly docstrings (leading
   signature block, short first sentence).
 
+Reference links and hover tooltips (ending with the candidate-method list for an
+ambiguous splatted call):
+
+![Demo of reference links and hover tooltips](https://global.discourse-cdn.com/julialang/original/3X/1/a/1a2cae96b243ca00d79bf77c06257cf31b23e5f6.gif)
+
+Line selection with the permalink fragment updating in the URL:
+
+![Demo of line numbers and line selection](https://global.discourse-cdn.com/julialang/original/3X/8/0/80dc3d791d58b0f0d7920cd9cbcab2bcf006573c.gif)
+
+Try it live in the [documentation](https://fredrikekre.github.io/DocumenterCodeBlocks.jl/) —
+every code block there is rendered by the plugin.
+
 ## Usage
 
 To use the plugin, add the `CodeBlocks()` plugin to your `Documenter.makedocs` call:
