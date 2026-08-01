@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.1.0] - 2026-08-02
+
+### Changed
+ - Reference-link underlines in code blocks are now soft dotted at rest and
+   turn solid while the pointer is inside the code block, instead of
+   full-strength dotted underlines everywhere. This addresses feedback that
+   the underlines were visually distracting in call-heavy code. ([#6])
+
 ## [v1.0.1] - 2026-07-31
 
 ### Fixes
@@ -39,5 +47,7 @@ See [README.md](README.md) and the documentation for details.
 
 [v1.0.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.0.0
 [v1.0.1]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.0.1
+[v1.1.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.1.0
 [#3]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/3
 [#5]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/5
+[#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6
