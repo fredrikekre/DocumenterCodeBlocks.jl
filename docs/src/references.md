@@ -32,11 +32,23 @@ thing:
 a = foo(1)      # links the foo(a) docstring
 b = foo(1, 2)   # links the foo(a, b) docstring
 c = foo         # plain value mention → no link
+d = DocumenterCodeBlocks.foo(1)   # qualified call
 ```
 
 As the block above shows, resolution is **arity-aware**: a call with `n`
 positional arguments links to the method documented with `n` arguments,
-not just to the first documented method.
+not just to the first documented method. Qualified names resolve as a
+whole, but the link attaches to the name itself — the module qualifier
+and dot stay outside.
+
+**Macro calls** link on their name. No syntactic vouching is needed there:
+unlike a bare identifier, a macro name can only ever mean the macro.
+
+```julia
+@twice greet()                       # unqualified macro name
+DocumenterCodeBlocks.@twice greet()  # qualified name
+s = w"hello"                         # string macro
+```
 
 Code blocks inside docstrings get reference links too, with one exception:
 a reference that resolves back to the enclosing docstring itself is left

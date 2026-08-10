@@ -12,7 +12,7 @@ Enhanced code blocks for [Documenter.jl](https://github.com/JuliaDocs/Documenter
   URL.
 - **Reference links**: identifiers in code blocks that name a documented object link to its
   docstring — call-arity aware, so `foo(1, 2)` links to the `foo(a, b)` method
-  documentation.
+  documentation. Macro names link too.
 - **Hover tooltips** (doxygen style) on every reference link: the target's signature and a
   one-line summary, embedded at build time. Ambiguous references show the candidate-method
   list instead.
