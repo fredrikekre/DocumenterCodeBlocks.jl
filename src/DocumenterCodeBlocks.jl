@@ -32,12 +32,13 @@ blocks), so no node/`prerender` is needed.
 - `min_lines`: blocks with fewer lines get an id + permalink but no gutter
   (the default numbers every block, including one-liners).
 
-The first code block of a docstring — the signature header — is only
-syntax-highlighted: no line numbers, permalink, or reference links (headers
-aren't always valid Julia, e.g. `f(x[, y])`). In the rest of a docstring's code
-blocks, references that resolve back to the enclosing docstring itself are not
-linked — the reader is already there — while calls whose arity resolves to a
-different documented method still link.
+The first code block of a docstring — the signature header — gets no line
+numbers or permalink (headers aren't always valid Julia, e.g. `f(x[, y])`),
+but the argument and return types in it link to their docstrings; the
+documented name itself and the parameter names stay plain. Throughout a
+docstring, references with the enclosing docstring among their candidate
+targets are not linked — the reader is already there — while calls whose
+arity resolves to a different documented method still link.
 
 Build warnings prefixed `CodeBlocks: ` nudge toward tooltip-friendly (and
 generally better) docstrings: they fire — once per problem, and only for

@@ -38,6 +38,7 @@ measure()
 combine
 process(data::AbstractMatrix, weights::AbstractVector)
 process(data::AbstractVector)
+clone
 @twice
 @w_str
 ```

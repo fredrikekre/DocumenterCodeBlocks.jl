@@ -115,10 +115,13 @@ end
 # The first code block of a docstring is its signature header, rendered as the
 # first element of the docstring's `<section><div>` — where the `<section>` of
 # an aggregated entry may carry a per-docstring sub-anchor id. By convention
-# the header is not example code: any reference link would mostly be a
-# self-reference, and the header isn't always valid Julia (optional-argument
-# brackets like `f(x[, y])`), so it gets highlighting only — no gutter, no
-# id/permalink, no links.
+# the header is not example code — it gets no gutter and no id/permalink, and
+# it isn't always valid Julia (optional-argument brackets like `f(x[, y])`) —
+# but the argument and return types in it do get reference links (issue #11):
+# the header is emitted in a binding context, so parameter names stay plain
+# while `::`/`{}` type positions and the `-> T` return-type convention link.
+# The documented name itself never links: it is a self reference (candidate-
+# aware, so same-arity siblings count as self too).
 function _docstring_sig_prefix(html, offset)
     _preceded_by(html, offset, "<div>") || return false
     j = offset - ncodeunits("<div>") - 1   # the byte just before "<div>"
@@ -174,10 +177,10 @@ function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
     for m in eachmatch(BLOCK_RE, html)
         print(io, SubString(html, pos, prevind(html, m.offset)))
         content = String(m.captures[2])
+        self_ids = _enclosing_docstring_ids(html, m.offset)
         if _docstring_sig_prefix(html, m.offset)
-            print(io, transform_signature_block(content))
+            print(io, transform_signature_block(content, plugin, doc, page, tips, self_ids))
         else
-            self_ids = _enclosing_docstring_ids(html, m.offset)
             print(io, transform_block(content, plugin, doc, page, seen, tips, self_ids))
         end
         pos = m.offset + ncodeunits(m.match)
@@ -217,13 +220,17 @@ end
 
 # A docstring signature header: syntax-highlighted like any block (JuliaSyntax
 # tolerates the not-quite-Julia bits and falls back to plain escaped text on a
-# hard parse failure), but with no resolver (no reference links, no tooltip
-# collection), no gutter, and no id/permalink.
-function transform_signature_block(content)
+# hard parse failure), with no gutter and no id/permalink. Reference links DO
+# attach to the types in it — the whole header is emitted in a binding context
+# (`binding = true`), so parameter names bind and stay plain while type
+# positions and the `-> T` return type link; the documented name itself is a
+# (candidate-aware) self reference and never links.
+function transform_signature_block(content, plugin, doc, page, tips = nothing, self_ids = nothing)
     source = block_source(content)
+    resolve = make_resolver(plugin, doc, page, tips, self_ids)
     return string(
         "<pre><code class=\"", CODE_CLASSES, "\">",
-        highlight_julia_html(source),
+        highlight_julia_html(source; resolve = resolve, binding = true),
         "</code></pre>",
     )
 end

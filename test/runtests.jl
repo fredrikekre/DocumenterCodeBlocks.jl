@@ -170,6 +170,13 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         # Role-vouched links are unaffected by binding contexts: the annotated
         # parameter's type still links inside a signature.
         @test occursin(link("T") * "<span class=\"julia-type\">T</span></a>", h("g(x::T) = x"))
+        # `binding = true` starts emission in a binding context — the mode
+        # signature headers use: parameter names bind, while type annotations
+        # and the `-> T` return-type position link.
+        hh = DCB.highlight_julia_html("g(foo::T) -> foo"; resolve = stub, binding = true)
+        @test count(link("foo"), hh) == 1               # only the return position
+        @test endswith(hh, link("foo") * "foo</a>")
+        @test occursin(link("T") * "<span class=\"julia-type\">T</span></a>", hh)
     end
 
     @testset "split_highlighted" begin
@@ -350,9 +357,21 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             @test occursin("fit(x::AbstractVector, y::AbstractVector)", refs)
         end
 
+        # The <details> element of the docstring anchored at `id`.
+        function docstring_details(html, id)
+            o = findfirst("<summary id=\"$id\">", html)
+            @assert o !== nothing
+            c = findnext("</details>", html, last(o))
+            return SubString(html, first(o), last(c))
+        end
+        # A docstring's signature header block (its leading code block).
+        sig_header(details) = match(
+            r"<section[^>]*><div><pre><code class=\"nohighlight hljs\">(.*?)</code></pre>"s,
+            details,
+        ).captures[1]
+
         @testset "signature headers in docstrings" begin
-            # The leading code block of a docstring gets highlighting only:
-            # no id/gutter/links.
+            # The leading code block of a docstring gets no id/gutter.
             @test occursin("<section><div><pre><code class=\"nohighlight hljs\">", index)
             @test !occursin("<section><div><pre id=", index)
             # Both headers of the aggregated `combine` entry are stripped —
@@ -366,16 +385,21 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
                 )
             ) == 2
             @test occursin("<section id=\"", index) == SUBANCHORS
+            # Documented types in a header link (issue #11): clone's header
+            # references MyType as argument annotation AND `->` return type.
+            clone = sig_header(docstring_details(index, "DocumenterCodeBlocks.clone"))
+            @test count("julia-ref\" href=\"#DocumenterCodeBlocks.MyType\"", clone) == 2
+            # The documented name itself and the parameters stay plain.
+            @test !occursin("julia-ref\" href=\"#DocumenterCodeBlocks.clone", clone)
+            @test occursin("<span class=\"julia-funcall\">clone</span>(m", clone)
+            # A same-arity typed sibling is a self reference too: the header of
+            # qux(x::String) must not link `qux` through qux(x::Int)'s anchor
+            # (the candidate targets include the enclosing docstring).
+            quxs = sig_header(docstring_details(index, "DocumenterCodeBlocks.qux-Tuple{String}"))
+            @test !occursin("julia-ref", quxs)
         end
 
         @testset "self references in docstrings" begin
-            # The <details> element of the docstring anchored at `id`.
-            function docstring_details(html, id)
-                o = findfirst("<summary id=\"$id\">", html)
-                @assert o !== nothing
-                c = findnext("</details>", html, last(o))
-                return SubString(html, first(o), last(c))
-            end
             selflink(id) = "julia-ref\" href=\"#$id\""
             # foo(i) inside foo(a)'s docstring is a self reference: not linked.
             # Other documented names in the same block still link.

@@ -54,10 +54,14 @@ s = w"hello"                         # string macro
 ```
 
 Code blocks inside docstrings get reference links too, with one exception:
-a reference that resolves back to the enclosing docstring itself is left
-unlinked — the reader is already looking at the target. A call whose arity
-resolves to a *different* documented method still links, so an example in
-[`foo(a, b)`](@ref)'s docstring that calls `foo(1)` links to [`foo(a)`](@ref).
+a reference with the enclosing docstring among its candidate targets is left
+unlinked — it (possibly) means the very thing the reader is looking at. A
+call whose arity resolves to a *different* documented method still links, so
+an example in [`foo(a, b)`](@ref)'s docstring that calls `foo(1)` links to
+[`foo(a)`](@ref). The **signature header** — a docstring's leading code
+block — links its argument and return types the same way (see
+[`clone`](@ref)'s header in the API reference, which links `MyType` twice),
+while the documented name and the parameters stay plain.
 
 # [Hover tooltips](@id tooltips)
 

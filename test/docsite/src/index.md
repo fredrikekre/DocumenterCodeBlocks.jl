@@ -44,6 +44,7 @@ DocumenterCodeBlocks.fit(x::AbstractVector, y::AbstractVector)
 DocumenterCodeBlocks.fit(X::AbstractMatrix, w::AbstractVector)
 DocumenterCodeBlocks.process(data::AbstractMatrix, weights::AbstractVector)
 DocumenterCodeBlocks.process(data::AbstractVector)
+DocumenterCodeBlocks.clone
 DocumenterCodeBlocks.@twice
 DocumenterCodeBlocks.@w_str
 ```

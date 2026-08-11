@@ -409,7 +409,11 @@ end
 
 # --- public entry points --------------------------------------------------------
 
-function highlight_julia_html(source::AbstractString; resolve = nothing)
+# `binding = true` starts the emission in a binding context: only role-vouched
+# links (types, callees) and positions that reset the context (the RHS of `=`,
+# a `->` body) can link — used for docstring signature headers, where the
+# parameter names are bindings of the signature being displayed.
+function highlight_julia_html(source::AbstractString; resolve = nothing, binding::Bool = false)
     cu = codeunits(source)
     tree = try
         _JS.parseall(_JS.GreenNode, source; ignore_errors = true)
@@ -417,7 +421,7 @@ function highlight_julia_html(source::AbstractString; resolve = nothing)
         return _escape_html(source)   # fall back to plain escaped text
     end
     io = IOBuffer()
-    _emit!(io, cu, tree, 0, :none, nothing, false, resolve)
+    _emit!(io, cu, tree, 0, :none, nothing, false, resolve, nothing, binding)
     return String(take!(io))
 end
 
@@ -427,19 +431,25 @@ end
 # resolve_reference's `(href, targets)` NamedTuple.
 # `self_ids` holds the anchor ids of the enclosing docstring, if the block is
 # inside one: the entry's own anchor plus, within an aggregated entry, the
-# enclosing docstring's sub-anchor. A reference that resolves right back to one
-# of these is a self reference — the reader is already looking at the target —
-# and is not linked. A call whose arity resolves to a *different* method's
-# docstring (another section of the same aggregate, or another entry) still
+# enclosing docstring's sub-anchor. A reference ANY of whose candidate targets
+# resolves back to one of these is a self reference — it (possibly) means the
+# very thing the reader is looking at — and is not linked. This also keeps a
+# signature header from linking its own name through a same-arity sibling
+# (`qux(x::Int)` / `qux(x::String)`: the ambiguous candidates include self). A
+# reference whose candidates all point at *different* docstrings (an
+# exact-arity sibling method, another section of the same aggregate) still
 # links.
 # Every target that resolves is also recorded (deduplicated by href) in the
 # page-level `tips` collector, which becomes the page's hidden tooltip payload.
 function make_resolver(plugin, doc, page, tips = nothing, self_ids = nothing)
     plugin.reference_links || return nothing
     cache = Dict{Tuple{String, Union{Int, AtLeast, Nothing}}, Any}()
+    isself(href, ids) = any(id -> href == "#" * id, ids)
     return function (name, arity)
         r = get!(() -> resolve_reference(name, doc, page, arity, plugin), cache, (name, arity))
-        r !== nothing && self_ids !== nothing && any(id -> r.href == "#" * id, self_ids) && return nothing
+        r !== nothing && self_ids !== nothing &&
+            (isself(r.href, self_ids) || any(t -> isself(t.href, self_ids), r.targets)) &&
+            return nothing
         if r !== nothing && tips !== nothing
             for t in r.targets
                 get!(tips, t.tipkey, t)
