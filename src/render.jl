@@ -37,9 +37,20 @@ function block_id(source::AbstractString, seen::Dict{String, Int})
 end
 
 # Build the `<span class="code-lines">…</span>` inner from per-line HTML fragments.
-function code_lines_html(line_htmls::Vector{String})
+# A `start > 1` (continued line_counter, `@codeblocks line_counter = :continue`)
+# offsets the CSS line counter via an inline `counter-reset` — inline style wins
+# over the stylesheet's `counter-reset: line` — and exposes the start to
+# line-numbers.js as `data-ln-start` (fragment L-numbers are displayed numbers).
+function code_lines_html(line_htmls::Vector{String}, start::Int = 1)
     io = IOBuffer()
-    print(io, "<span class=\"code-lines\">")
+    if start == 1
+        print(io, "<span class=\"code-lines\">")
+    else
+        print(
+            io, "<span class=\"code-lines\" data-ln-start=\"", start,
+            "\" style=\"counter-reset: line ", start - 1, "\">",
+        )
+    end
     for frag in line_htmls
         print(io, "<span class=\"line\"><span class=\"line-num\" aria-hidden=\"true\"></span>", frag, "</span>")
     end
@@ -47,13 +58,14 @@ function code_lines_html(line_htmls::Vector{String})
     return String(take!(io))
 end
 
-# Full replacement <pre> for a multi-line (numbered) block.
-function numbered_pre(id::AbstractString, code_classes::AbstractString, line_htmls::Vector{String})
-    digits = length(string(length(line_htmls)))
+# Full replacement <pre> for a multi-line (numbered) block. With `start == 1`
+# (the default, restart mode) the markup is exactly as before.
+function numbered_pre(id::AbstractString, code_classes::AbstractString, line_htmls::Vector{String}, start::Int = 1)
+    digits = length(string(start + length(line_htmls) - 1))
     style = digits > 2 ? " style=\"--ln-digits:$(digits)\"" : ""
     return string(
         "<pre id=\"", id, "\"><code class=\"", code_classes, " line-numbers\"", style, ">",
-        code_lines_html(line_htmls),
+        code_lines_html(line_htmls, start),
         "</code></pre>",
     )
 end

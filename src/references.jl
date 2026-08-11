@@ -42,9 +42,12 @@ end
 # documented objects for the binding when the reference is ambiguous (neither the
 # exact typesig nor the dispatch probe singled one out). The targets feed the
 # doxygen-style hover tooltips (signature list + per-page tip payloads).
-function resolve_reference(name::AbstractString, doc, page, arity = nothing, plugin = nothing)
+# `mod` is the module the block resolves in — its positional `CurrentModule`
+# (or the docstring's own module), from the ScanStep; `nothing` falls back to
+# the page-final state (blocks the scan did not see).
+function resolve_reference(name::AbstractString, doc, page, arity = nothing, plugin = nothing, mod = nothing)
     page === nothing && return nothing
-    mod = get(page.globals.meta, :CurrentModule, Main)
+    mod === nothing && (mod = get(page.globals.meta, :CurrentModule, Main))
 
     # Parse the identifier; accept a bare symbol, a dotted path (Foo.bar), or a
     # macro name (`@time`, `Foo.@bar`, `@raw_str`) — the latter parses as a

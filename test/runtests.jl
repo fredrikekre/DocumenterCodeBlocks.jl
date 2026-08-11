@@ -207,6 +207,76 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         @test startswith(id1, "c-")
         @test DCB.block_id("x = 1", seen) == id1 * "-2"   # same-page duplicate
         @test DCB.block_id("x = 2", seen) != id1
+        # Continued numbering: start > 1 offsets the CSS counter inline and
+        # exposes the start to line-numbers.js; start == 1 (restart, the
+        # default) emits exactly the pre-offset markup.
+        offset = DCB.numbered_pre("c-x", "k", ["a", "b"], 5)
+        @test occursin("data-ln-start=\"5\"", offset)
+        @test occursin("style=\"counter-reset: line 4\"", offset)
+        @test !occursin("data-ln-start", DCB.numbered_pre("c-x", "k", ["a", "b"]))
+        # The gutter width fits the LAST displayed number.
+        @test occursin("--ln-digits:3", DCB.numbered_pre("c-x", "k", ["a", "b"], 99))
+    end
+
+    @testset "global line_counter option" begin
+        # Constructor validation: Symbols only, restricted vocabulary.
+        @test CodeBlocks().line_counter === :restart
+        @test CodeBlocks(line_counter = :continue).line_counter === :continue
+        @test CodeBlocks(line_counter = :named).line_counter === :named
+        @test_throws ArgumentError CodeBlocks(line_counter = :sideways)
+        @test_throws ArgumentError CodeBlocks(line_counter = "continue")
+        # The global default applies to every page (here: two blocks continue
+        # 1–2 → 3), and an `@codeblocks` block still overrides it
+        # positionally (the third block restarts).
+        mktempdir() do dir
+            mkpath(joinpath(dir, "src"))
+            write(
+                joinpath(dir, "src", "index.md"), """
+                # T
+
+                ```julia
+                a = 1
+                b = 2
+                ```
+
+                ```julia
+                c = 3
+                ```
+
+                ```@codeblocks
+                line_counter = :restart
+                ```
+
+                ```julia
+                d = 4
+                ```
+                """
+            )
+            Logging.with_logger(Logging.NullLogger()) do
+                Documenter.makedocs(
+                    root = dir, sitename = "t", remotes = nothing,
+                    plugins = [CodeBlocks(line_counter = :continue)],
+                    format = Documenter.HTML(edit_link = nothing, inventory_version = "0"),
+                )
+            end
+            html = read(joinpath(dir, "build", "index.html"), String)
+            @test [m.captures[1] for m in eachmatch(r"data-ln-start=\"(\d+)\"", html)] == ["3"]
+        end
+    end
+
+    @testset "scan block kinds" begin
+        # The scan must classify fences exactly like the rendered HTML the
+        # post-render passes will consume: jldoctests render as julia-repl
+        # iff they contain a prompt (Documenter's fence-first rule).
+        kind(info, code = "x") = DCB._block_kind(Documenter.MarkdownAST.CodeBlock(info, code))
+        @test kind("julia") === :block
+        @test kind("julia-repl") === :repl
+        @test kind("jldoctest") === :block                       # script style
+        @test kind("jldoctest", "julia> 1\n1") === :repl         # REPL style
+        @test kind("jldoctest label; filter = r\"x\"") === :block
+        @test kind("text") === nothing
+        @test kind("nohighlight") === nothing
+        @test kind("") === nothing
     end
 
     @testset "arity" begin
@@ -260,6 +330,7 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         index = read(joinpath(build, "index.html"), String)
         skip = read(joinpath(build, "skipcases", "index.html"), String)
         doct = read(joinpath(build, "doctest-blocks", "index.html"), String)
+        cont = read(joinpath(build, "continued", "index.html"), String)
 
         link_hrefs(html, frag) = [
             m.captures[1] for m in eachmatch(r"<a class=\"julia-ref\" href=\"([^\"]*)\"", html)
@@ -443,6 +514,83 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             # REPL transcripts get gutters and highlighted prompts/input.
             @test occursin("julia-prompt", skip)
             @test occursin(r"line-numbers[^>]*>.{0,200}julia-prompt"s, skip)
+        end
+
+        @testset "@codeblocks continued numbering" begin
+            # One running counter in document order, across block kinds:
+            # julia 1–4 → repl 5–6 → @repl 7–10 → one-liner 11 → (docstring)
+            # → 12–13 → 14–16 → restart back to 1; then the named-series
+            # section (its two continuing blocks start at 3 each). Only
+            # offset blocks carry the attribute; the sequence pins both the
+            # offsets and the fact that the docstring in the middle does not
+            # advance the counter.
+            @test [m.captures[1] for m in eachmatch(r"data-ln-start=\"(\d+)\"", cont)] ==
+                ["5", "7", "11", "12", "14", "3", "3"]
+            # The inline style offsets the CSS counter next to the attribute.
+            @test occursin(
+                "<span class=\"code-lines\" data-ln-start=\"5\" style=\"counter-reset: line 4\">",
+                cont,
+            )
+            # The executed @repl block participates in the continuation.
+            @test occursin(r"data-ln-start=\"7\"[^>]*>.{0,400}julia-prompt"s, cont)
+            # Default mode is untouched: no other page carries offset markup.
+            for html in (index, refs, zoo, skip, doct)
+                @test !occursin("data-ln-start", html)
+                @test !occursin("counter-reset", html)
+            end
+            # The docstring on the page is its own page: its example block has
+            # no offset markup, but still gets reference links (and self
+            # suppression for stepwise itself).
+            stepdoc = docstring_details(cont, "DocumenterCodeBlocks.stepwise")
+            @test !occursin("data-ln-start", stepdoc)
+            @test occursin(r"julia-ref\" href=\"[^\"]*add_numbers\"", stepdoc)
+            @test !occursin("stepwise</span></a>", stepdoc)
+            # line_counter = :named: the @example series-a pair continues
+            # 1–2 → 3 across unrelated blocks (the second block is the
+            # one-liner `a3 = a2 + 1`), and the named REPL-style jldoctest
+            # pair continues 1–2 → 3–4 independently. Unnamed blocks and
+            # other series in between restart (no data-ln-start).
+            @test occursin(
+                r"data-ln-start=\"3\"[^>]*style=\"counter-reset: line 2\"[^>]*>.{0,300}a3",
+                cont,
+            )
+            @test occursin(r"data-ln-start=\"3\"[^>]*>.{0,300}julia-prompt"s, cont)
+            # The series-b block (different name) starts a fresh series: no
+            # offset markup on its enclosing <pre>.
+            ib1 = findfirst(">b1 ", cont)
+            @test ib1 !== nothing
+            b1block = SubString(
+                cont, first(findprev("<pre", cont, first(ib1))),
+                last(findnext("</pre>", cont, first(ib1))),
+            )
+            @test !occursin("data-ln-start", b1block)
+        end
+
+        @testset "positional CurrentModule" begin
+            # Before the mid-page switch, unqualified DemoInner names must not
+            # resolve; after it they do — and the parent module's names stop
+            # resolving unqualified. Both value mentions stay plain text:
+            @test occursin(r"y <span class=\"julia-keyword\">=</span> inner_fn\b", cont)
+            @test occursin(r"u <span class=\"julia-keyword\">=</span> add_numbers\b", cont)
+            # inner_fn links from the switch block and the two restart blocks
+            # (its own docstring call is a self reference); inner_helper also
+            # links from the named-section block and inner_fn's docstring.
+            @test length(link_hrefs(cont, "DemoInner.inner_fn")) == 3
+            @test length(link_hrefs(cont, "DemoInner.inner_helper")) == 4
+            # The @repl block resolves its QUALIFIED reference even though the
+            # page-final CurrentModule is DemoInner (where the qualifier does
+            # not resolve): per-block meta, not page-final state.
+            @test occursin(
+                r"data-ln-start=\"7\"[^>]*>.{0,600}julia-ref\" href=\"[^\"]*add_numbers\""s,
+                cont,
+            )
+            # A docstring resolves in its own module wherever it lands:
+            # inner_fn's example links inner_helper via DemoInner.
+            innerdoc = docstring_details(cont, "DocumenterCodeBlocks.DemoInner.inner_fn")
+            @test occursin(
+                "julia-ref\" href=\"#DocumenterCodeBlocks.DemoInner.inner_helper\"",
+                innerdoc,
+            )
         end
 
         @testset "@repl blocks" begin

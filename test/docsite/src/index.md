@@ -16,6 +16,8 @@ site's build output.
 - [Skip cases](@ref) — `julia-repl`, `@example` output, and `nohighlight`
   blocks that must be left untouched.
 - [Reference links](@ref) — identifiers that resolve to docstrings.
+- [Continued numbering & positional meta](@ref) — `@codeblocks` options and
+  positional `CurrentModule`.
 
 ## API
 
