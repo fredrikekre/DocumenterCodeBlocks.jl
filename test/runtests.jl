@@ -66,13 +66,72 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         @test !occursin("<span class=\"julia-funcall\">f</span> (generic", r2)
     end
 
+    @testset "macro names" begin
+        # A stub resolver records the names asked for and links every one, so
+        # the shapes of macro-name references can be checked without a build.
+        asked = String[]
+        function stub(name, arity)
+            push!(asked, name)
+            t = (href = "#$name", tipkey = "#$name", label = name, sig = name, brief = nothing)
+            return (href = t.href, targets = [t])
+        end
+        h(src) = DCB.highlight_julia_html(src; resolve = stub)
+        link(name) = "<a class=\"julia-ref\" href=\"#$name\">"
+        # The `@` sigil is part of the link, and the arguments are not.
+        @test h("@time f(x)") ==
+            link("@time") * "<span class=\"julia-macro\">@</span>" *
+            "<span class=\"julia-macro\">time</span></a> " *
+            link("f") * "<span class=\"julia-funcall\">f</span></a>(x)"
+        # Qualified names resolve as a whole but the link wraps only the name
+        # (sigil included); the module qualifier and dot stay outside.
+        @test startswith(
+            h("Foo.@bar x"),
+            "Foo<span class=\"julia-operator\">.</span>" * link("Foo.@bar") *
+                "<span class=\"julia-macro\">@</span><span class=\"julia-macro\">bar</span></a>",
+        )
+        # In the legacy `@Foo.bar` spelling the sigil is detached from the
+        # name, so only the name is wrapped.
+        @test startswith(
+            h("@Foo.bar x"),
+            "<span class=\"julia-macro\">@</span>Foo<span class=\"julia-operator\">.</span>" *
+                link("@Foo.bar") * "<span class=\"julia-macro\">bar</span></a>",
+        )
+        # String/cmd macros resolve through their `@…_str`/`@…_cmd` names; the
+        # literal itself is not part of the link.
+        @test startswith(h("raw\"hi\""), link("@raw_str") * "<span class=\"julia-macro\">raw</span></a>")
+        @test startswith(h("x`cmd`"), link("@x_cmd"))
+        # A qualified literal resolves under the name its binding carries.
+        @test startswith(
+            h("Foo.bar\"hi\""),
+            "Foo<span class=\"julia-operator\">.</span>" * link("Foo.@bar_str") *
+                "<span class=\"julia-macro\">bar</span></a>",
+        )
+        @test occursin(link("Foo.Sub.@bar_cmd") * "<span class=\"julia-macro\">bar</span></a>", h("Foo.Sub.bar`c`"))
+        # Qualified function calls and type annotations get the same
+        # treatment: resolve `Foo.bar`, link only `bar`.
+        @test h("Foo.bar(1)") ==
+            "Foo<span class=\"julia-operator\">.</span>" * link("Foo.bar") *
+            "<span class=\"julia-funcall\">bar</span></a>(<span class=\"julia-number\">1</span>)"
+        @test endswith(
+            h("x::Foo.Bar"),
+            "Foo<span class=\"julia-operator\">.</span>" * link("Foo.Bar") *
+                "<span class=\"julia-type\">Bar</span></a>",
+        )
+        empty!(asked)
+        h("@show(a, b)\n@__MODULE__\nf(@view A[1])\nx::@NamedTuple{a::Int}")
+        @test asked == ["@show", "@__MODULE__", "f", "@view", "@NamedTuple", "Int"]
+        # Nothing links without a resolver (docstring signature headers).
+        @test !occursin("julia-ref", DCB.highlight_julia_html("@time f(x)"))
+    end
+
     @testset "split_highlighted" begin
         @test DCB.split_highlighted("a\nb") == ["a", "b"]
         # A span crossing a newline is closed and reopened per line.
         @test DCB.split_highlighted("<span class=\"x\">a\nb</span>") ==
             ["<span class=\"x\">a</span>", "<span class=\"x\">b</span>"]
-        # Non-span tags close/reopen with their own tag name (a dotted-name
-        # reference link can legally cross a newline: `Foo.\n    bar`).
+        # Non-span tags close/reopen with their own tag name (reference links
+        # wrap only a name and rarely cross a newline, but the splitter must
+        # not depend on that).
         @test DCB.split_highlighted("<a href=\"#\">Foo.\nbar</a>") ==
             ["<a href=\"#\">Foo.</a>", "<a href=\"#\">bar</a>"]
         # Nested mixed tags close innermost-first.
@@ -153,12 +212,40 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         ]
 
         @testset "role-gated reference links" begin
-            # foo appears in 4 call positions; plain value mentions must not link.
-            @test length(link_hrefs(refs, "foo-Tuple")) == 4
+            # foo appears in 5 call positions (one qualified); plain value
+            # mentions must not link.
+            @test length(link_hrefs(refs, "foo-Tuple")) == 5
+            # The qualified call's link wraps the name only.
+            @test occursin(
+                r"DocumenterCodeBlocks<span class=\"julia-operator\">\.</span><a class=\"julia-ref\" href=\"[^\"]*foo-Tuple\{Any\}\"[^>]*><span class=\"julia-funcall\">foo</span></a>",
+                refs,
+            )
             # `m::MyType` annotation + `MyType(3)` callee both link.
             @test length(link_hrefs(refs, "MyType")) == 2
             # An undocumented name stays plain.
             @test !occursin("undocumented_helper</a>", refs)
+        end
+
+        @testset "macro reference links" begin
+            # `@twice` is referenced unqualified, qualified, and as a call;
+            # `w"hello"` links through the `@w_str` name of the string macro.
+            @test length(link_hrefs(refs, "@twice")) == 3
+            @test length(link_hrefs(refs, "@w_str")) == 1
+            # The `@` sigil is inside the link; a qualified call's module
+            # prefix and dot stay outside it.
+            @test occursin(
+                r"julia-ref\" href=\"[^\"]*@twice\"[^>]*><span class=\"julia-macro\">@</span><span class=\"julia-macro\">twice</span></a>",
+                refs,
+            )
+            @test occursin(
+                r"DocumenterCodeBlocks<span class=\"julia-operator\">\.</span><a class=\"julia-ref\" href=\"[^\"]*@twice\"[^>]*><span class=\"julia-macro\">@</span><span class=\"julia-macro\">twice</span></a>",
+                refs,
+            )
+            # An undocumented macro is highlighted but not linked.
+            @test occursin("<span class=\"julia-macro\">undocumented_macro</span>", refs)
+            @test !occursin("undocumented_macro</span></a>", refs)
+            # Macros get tooltips like any other reference.
+            @test occursin(r"data-for=\"[^\"]*@twice\"><code class=\"ref-tip-sig", refs)
         end
 
         @testset "arity pruning and splats" begin
@@ -244,6 +331,11 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             foo2 = docstring_details(index, "DocumenterCodeBlocks.foo-Tuple{Any, Any}")
             @test !occursin(selflink("DocumenterCodeBlocks.foo-Tuple{Any, Any}"), foo2)
             @test occursin(selflink("DocumenterCodeBlocks.foo-Tuple{Any}"), foo2)
+            # A macro name inside its own docstring is a self reference too,
+            # while other documented names in the block still link.
+            twice = docstring_details(index, "DocumenterCodeBlocks.@twice")
+            @test !occursin(selflink("DocumenterCodeBlocks.@twice"), twice)
+            @test occursin(selflink("DocumenterCodeBlocks.greet"), twice)
             # Constructor call in the type's own docstring is a self reference.
             @test !occursin(
                 selflink("DocumenterCodeBlocks.MyType"),
@@ -283,7 +375,7 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             # and reference-linked.
             @test occursin("julia-keyword\">import</span>", skip)
             @test occursin(
-                r"julia-ref\" href=\"[^\"]*add_numbers\"[^>]*>DocumenterCodeBlocks<span class=\"julia-operator\">\.</span><span class=\"julia-funcall\">add_numbers</span></a>\(<span class=\"julia-number\">20</span>",
+                r"DocumenterCodeBlocks<span class=\"julia-operator\">\.</span><a class=\"julia-ref\" href=\"[^\"]*add_numbers\"[^>]*><span class=\"julia-funcall\">add_numbers</span></a>\(<span class=\"julia-number\">20</span>",
                 skip,
             )
             # Output segments keep their content, wrapped for ANSI color rules.

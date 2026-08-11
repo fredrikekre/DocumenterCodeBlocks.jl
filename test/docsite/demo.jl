@@ -316,3 +316,31 @@ every `fit` call site is ambiguous and both multiline headers appear as
 collapsed one-line labels in the candidate list.
 """
 fit(X::AbstractMatrix, w::AbstractVector) = nothing
+
+"""
+    @twice(expr)
+
+Evaluate `expr` twice and return the value of the second evaluation. A
+documented **macro**: macro names in code blocks link to their docstring,
+whether written unqualified or qualified.
+
+# Examples
+
+```julia
+@twice greet()                 # the macro itself: a self reference, not linked
+x = add_numbers(1, @twice 2)   # nested in a call: still linked
+```
+"""
+macro twice(expr)
+    return esc(:($(expr); $(expr)))
+end
+
+"""
+    w"text"
+
+Return `text` unchanged. A documented **string macro**: the `w` prefix of a
+`w"…"` literal links to this docstring.
+"""
+macro w_str(s)
+    return s
+end

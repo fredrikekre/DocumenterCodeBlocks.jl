@@ -49,13 +49,26 @@ function check(name, ok, extra) {
   check("ambiguous links carry data-ref-targets", nAmbig >= 2, `found ${nAmbig}`);
 
   // --- role gating: only callees and type positions link -------------------
-  // foo appears in 4 call positions; the plain value mentions (`c = foo`) must
-  // NOT produce links, so exactly 4 foo links exist on the page.
+  // foo appears in 5 call positions (one qualified); the plain value mentions
+  // (`c = foo`) must NOT produce links, so exactly 5 foo links exist.
   const nFoo = await page.locator('a.julia-ref[href*="foo-Tuple"]').count();
-  check("plain value mentions are not linked (4 foo call links)", nFoo === 4, `found ${nFoo}`);
+  check("plain value mentions are not linked (5 foo call links)", nFoo === 5, `found ${nFoo}`);
   // `m::MyType` annotation + `MyType(3)` callee both link.
   const nMyType = await page.locator('a.julia-ref[href$="MyType"]').count();
   check("type annotations link (2 MyType links)", nMyType >= 2, `found ${nMyType}`);
+  // Macro names link too — sigil included, the module qualifier of a
+  // qualified name excluded, and string-macro prefixes through their
+  // `@…_str` name.
+  const nTwice = await page.locator('a.julia-ref[href$="@twice"]').count();
+  check("macro names link (3 @twice links)", nTwice === 3, `found ${nTwice}`);
+  const twiceTexts = await page.locator('a.julia-ref[href$="@twice"]').allInnerTexts();
+  check(
+    "links wrap the name only (sigil in, qualifier out)",
+    twiceTexts.length === 3 && twiceTexts.every((t) => t === "@twice"),
+    JSON.stringify(twiceTexts)
+  );
+  const nWstr = await page.locator('a.julia-ref[href$="@w_str"]').count();
+  check("string-macro prefix links via @w_str", nWstr === 1, `found ${nWstr}`);
 
   const popup = page.locator(".ref-popup");
 
@@ -82,6 +95,15 @@ function check(name, ok, extra) {
       JSON.stringify(brief)
     );
     check("signature is syntax-highlighted", (await popup.locator(".ref-tip-sig .julia-funcall").count()) > 0);
+  }
+
+  // --- macro reference: tooltip like any other link -----------------------
+  const macroLink = page.locator('a.julia-ref[href$="@twice"]').first();
+  check("tooltip appears on macro hover", await hoverAndTip(macroLink));
+  {
+    const sig = await popup.locator(".ref-tip-sig").innerText().catch(() => "");
+    check("macro tooltip shows the signature", /@twice\(expr\)/.test(sig), JSON.stringify(sig));
+    check("macro name is highlighted", (await popup.locator(".ref-tip-sig .julia-macro").count()) > 0);
   }
 
   // --- docstring without a leading signature block → synthesized ----------

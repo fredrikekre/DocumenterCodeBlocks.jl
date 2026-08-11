@@ -18,7 +18,7 @@ blocks), so no node/`prerender` is needed.
 
 - `languages`: which code-block languages to process.
 - `reference_links`: wrap identifiers that name a documented object in a link to
-  its docstring.
+  its docstring. Macro names link too.
 - `popups`: doxygen-style hover tooltips on reference links, embedded per page
   (no fetching): the target's signature and the docstring's first sentence.
   When a reference matches several documented methods (a bare identifier, a

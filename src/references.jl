@@ -46,13 +46,17 @@ function resolve_reference(name::AbstractString, doc, page, arity = nothing, plu
     page === nothing && return nothing
     mod = get(page.globals.meta, :CurrentModule, Main)
 
-    # Parse the identifier; accept a bare symbol or a dotted path (Foo.bar).
+    # Parse the identifier; accept a bare symbol, a dotted path (Foo.bar), or a
+    # macro name (`@time`, `Foo.@bar`, `@raw_str`) — the latter parses as a
+    # `:macrocall` whose first argument is the macro's name, a form
+    # `DocSystem.binding` already knows how to resolve.
     ex = try
         Meta.parse(name)
     catch
         return nothing
     end
-    (ex isa Symbol || (ex isa Expr && ex.head === :.)) || return nothing
+    (ex isa Symbol || (ex isa Expr && (ex.head === :. || ex.head === :macrocall))) ||
+        return nothing
 
     binding = try
         DocSystem.binding(mod, ex)

@@ -252,3 +252,23 @@ Combine three things. The second docstring of the aggregated `combine` entry;
 its signature header must be stripped of gutter/links just like the first.
 """
 combine(a, b, c) = (a, b, c)
+
+"""
+    @twice(expr)
+
+Evaluate `expr` twice and return the value of the second evaluation. A
+documented **macro**: macro names in code blocks link to their docstring.
+"""
+macro twice(expr)
+    return esc(:($(expr); $(expr)))
+end
+
+"""
+    w"text"
+
+Return `text` unchanged. A documented **string macro**: the `w` prefix of a
+`w"…"` literal links to this docstring.
+"""
+macro w_str(s)
+    return s
+end

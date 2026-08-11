@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.0] - 2026-08-10
+
+### Added
+ - Macro names in code blocks now link to their docstring, like function calls
+   and type annotations already did. ([#8], [#10])
+
+### Changed
+ - Reference links on qualified names (`Foo.bar(...)`, `Foo.@bar`,
+   `x::Foo.Bar`) now wrap only the name; the module qualifier and dot stay
+   outside the link. ([#10])
+
 ## [v1.1.0] - 2026-08-02
 
 ### Changed
@@ -48,6 +59,9 @@ See [README.md](README.md) and the documentation for details.
 [v1.0.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.0.0
 [v1.0.1]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.0.1
 [v1.1.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.1.0
+[v1.2.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.2.0
 [#3]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/3
 [#5]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/5
 [#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6
+[#8]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/8
+[#10]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/10

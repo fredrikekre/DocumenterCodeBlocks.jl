@@ -5,9 +5,10 @@
 # tile the source exactly, so every byte is emitted by exactly one leaf. Context
 # that a leaf can't see on its own — "I'm the callee of a call" → funcall, "I'm to
 # the right of a `::`" → type — is passed *down* as an inherited `role`. Reference
-# links attach to whole nodes (an identifier leaf, or a dotted-name subtree) and
-# only in role-vouched positions (callees and type annotations); a node that
-# resolves wraps its emitted children in an <a>.
+# links resolve whole names (an identifier leaf, a dotted-name subtree, a macro
+# name) in role-vouched positions (callees and type annotations) and on macro
+# calls; the emitted <a> wraps just the name — for a qualified name the module
+# prefix and dot stay outside the link.
 #
 # Multiline string/comment tokens keep their embedded newlines; `split_highlighted`
 # then breaks the emitted HTML into per-line fragments (reopening spans/anchors).
@@ -121,6 +122,70 @@ function _is_dotted_name(node)
     return true
 end
 
+# The reference name spelled by a `.` node at the head of a `macrocall`, or
+# `nothing` when the node is not a qualified macro name. Written as-is for
+# `Foo.@bar` (and the legacy `@Foo.bar`, which parses to the same binding);
+# a qualified string/command literal gets the sigil and suffix its binding
+# carries: `Foo.bar"…"` → `Foo.@bar_str`.
+function _dotted_macro_name(cu, node, offset)
+    cs = _JS.children(node)
+    (cs === nothing || isempty(cs)) && return nothing
+    tail, tailoff, o = nothing, offset, offset
+    for c in cs
+        kc = _JS.kind(c)
+        (
+            kc == K"Identifier" || kc == K"." || kc == K"@" || kc == K"MacroName" ||
+                kc == K"StringMacroName" || kc == K"CmdMacroName" || _JS.is_trivia(c)
+        ) || return nothing
+        _JS.is_trivia(c) || ((tail, tailoff) = (c, o))
+        o += Int(_JS.span(c))
+    end
+    tail === nothing && return nothing
+    k = _JS.kind(tail)
+    k == K"MacroName" && return _text(cu, _noderange(offset, node))
+    (k == K"StringMacroName" || k == K"CmdMacroName") || return nothing
+    suffix = k == K"StringMacroName" ? "_str" : "_cmd"
+    # The dotted prefix as written ("Foo."), then sigil + name + suffix.
+    return string(
+        _text(cu, (offset + 1):tailoff), "@", _text(cu, _noderange(tailoff, tail)), suffix,
+    )
+end
+
+# The macro name at the head of a `macrocall` node: which of its children spell
+# the name, and the name to resolve the reference by. Four shapes occur:
+#
+#     @time x      → the `@` token plus a `MacroName` leaf   → "@time"
+#     Foo.@bar x   → a `.` node (see `_dotted_macro_name`)   → "Foo.@bar"
+#     raw"…"       → a `StringMacroName` leaf                → "@raw_str"
+#     x`…`         → a `CmdMacroName` leaf                   → "@x_cmd"
+#
+# Returns `(first, last, name)` — inclusive child indices plus the name — or
+# `nothing` when the node does not start with a macro name after all.
+function _macro_name(cu, node, offset)
+    o, i, start = offset, 0, 0
+    for c in _JS.children(node)
+        i += 1
+        kc = _JS.kind(c)
+        r = _noderange(o, c)
+        if start != 0
+            # After the `@` sigil (itself a trivia token) comes the name.
+            kc == K"MacroName" && return (first = start, last = i, name = "@" * _text(cu, r))
+            _JS.is_trivia(c) || return nothing
+        elseif kc == K"@"
+            start = i
+        elseif kc == K"." && (n = _dotted_macro_name(cu, c, o)) !== nothing
+            return (first = i, last = i, name = n)
+        elseif kc == K"StringMacroName" || kc == K"CmdMacroName"
+            suffix = kc == K"StringMacroName" ? "_str" : "_cmd"
+            return (first = i, last = i, name = string("@", _text(cu, r), suffix))
+        elseif !_JS.is_trivia(c)
+            return nothing
+        end
+        o += Int(_JS.span(c))
+    end
+    return nothing
+end
+
 # A quoted symbol (`:foo`): exactly the `:` token followed by an identifier.
 # (Excludes `quote … end` blocks and quoted expressions like `:(a + b)`.)
 function _is_symbol_quote(node)
@@ -155,10 +220,29 @@ end
 _is_arg(c) = !_JS.is_trivia(c) &&
     !(_JS.kind(c) in _PUNCT) && !(_JS.kind(c) in (K"parameters", K"="))
 
+# The (first, last) child indices a reference link wraps within a dotted node:
+# the last non-trivia child — the name — plus the `@` sigil right before it
+# when present, so `Foo.@bar` keeps the sigil in the link like a bare `@bar`
+# does. (In the legacy `@Foo.bar` spelling the sigil sits up front, detached
+# from the name; only the name is wrapped there.)
+function _name_span(node)
+    cs = _JS.children(node)
+    e = 0
+    for (i, c) in enumerate(cs)
+        _JS.is_trivia(c) || (e = i)
+    end
+    e == 0 && return nothing
+    s = (e > 1 && _JS.kind(cs[e - 1]) == K"@") ? e - 1 : e
+    return (s, e)
+end
+
 # The single recursive pass: emit `node` (at byte `offset`) under inherited `role`.
 # `arity` is the call argument count to pass to link resolution for a callee node
 # (or `nothing`), so a call links to the method with that many arguments.
-function _emit!(io, cu, node, offset, role, arity, in_link, resolve)
+# `pref` is a pre-resolved reference handed down by a `macrocall` parent whose
+# name is this (dotted) node — the link is opened here so it can wrap just the
+# name part instead of the whole qualified path.
+function _emit!(io, cu, node, offset, role, arity, in_link, resolve, pref = nothing)
     k = _JS.kind(node)
     r = _noderange(offset, node)
 
@@ -177,15 +261,27 @@ function _emit!(io, cu, node, offset, role, arity, in_link, resolve)
         return
     end
 
-    # Whole dotted name (Foo.bar) resolving as one link wraps its children.
-    linkhere = false
-    if linkable && !in_link && resolve !== nothing && k == K"." && _is_dotted_name(node)
-        ref = resolve(_text(cu, r), arity)
-        if ref !== nothing
-            _print_ref_open(io, ref)
-            linkhere = true
-        end
+    # A dotted name (Foo.bar) resolves as a whole, but the link wraps only the
+    # trailing name — the module qualifier and dot stay outside. `pref` is the
+    # already-resolved reference when a macrocall parent delegated its dotted
+    # name here.
+    dotref = pref
+    if dotref === nothing && linkable && !in_link && resolve !== nothing &&
+            k == K"." && _is_dotted_name(node)
+        dotref = resolve(_text(cu, r), arity)
     end
+    dotspan = dotref === nothing ? nothing : _name_span(node)
+
+    # A macro call links on its name (`@time`, `Foo.@bar`, the `raw` of
+    # `raw"…"`). No role gating is needed here: unlike a bare identifier, a
+    # macro name can only ever mean the macro. Only the name tokens are
+    # wrapped — the macro arguments are ordinary code, and a qualified name's
+    # module prefix stays outside the link (delegated to the `.` child via
+    # `pref`). Arity is not passed along: macro docstrings are bound without
+    # a signature (`Union{}`), so there is no per-arity method to pick.
+    macroname = (!in_link && resolve !== nothing && k == K"macrocall") ?
+        _macro_name(cu, node, offset) : nothing
+    macroref = macroname === nothing ? nothing : resolve(macroname.name, nothing)
 
     prefixcall = k in (K"call", K"dotcall") && _JS.is_prefix_call(node)
     # Splat arguments make the positional count a lower bound instead of exact:
@@ -234,11 +330,25 @@ function _emit!(io, cu, node, offset, role, arity, in_link, resolve)
             crole = (i == last_ident) ? role : :none      # only the last id carries the role
             carity = (i == last_ident) ? arity : nothing
         end
-        _emit!(io, cu, c, o, crole, carity, in_link || linkhere, resolve)
+        # The link wraps the children in `dotspan`/the macro-name span; the
+        # other children of a linked node are emitted `in_link` anyway so the
+        # name resolves once, as a whole (no stray link on a module prefix).
+        indot = dotspan !== nothing && dotspan[1] <= i <= dotspan[2]
+        (indot && i == dotspan[1]) && _print_ref_open(io, dotref)
+        inname = macroref !== nothing && macroname.first <= i <= macroname.last
+        # A dotted macro name delegates: the `.` child wraps its own name part.
+        cpref = (inname && kc == K".") ? macroref : nothing
+        wrapname = inname && cpref === nothing
+        (wrapname && i == macroname.first) && _print_ref_open(io, macroref)
+        _emit!(
+            io, cu, c, o, crole, carity,
+            in_link || wrapname || dotspan !== nothing, resolve, cpref,
+        )
+        (wrapname && i == macroname.last) && print(io, "</a>")
+        (indot && i == dotspan[2]) && print(io, "</a>")
         o += Int(_JS.span(c))
     end
 
-    linkhere && print(io, "</a>")
     return
 end
 

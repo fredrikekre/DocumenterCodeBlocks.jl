@@ -25,6 +25,20 @@ end
 For comparison, the same names in markdown resolve with `@ref`:
 [`add_numbers`](@ref), [`greet`](@ref), and [`MyType`](@ref).
 
+## Macros
+
+Macro names link like call callees do, whether written unqualified, qualified,
+or as the prefix of a string-macro literal. An undocumented macro stays plain
+text.
+
+```julia
+@twice greet()                       # unqualified macro name
+DocumenterCodeBlocks.@twice greet()  # qualified name
+@twice(add_numbers(1, 2))            # arguments keep their own links
+s = w"hello"                         # string macro
+@undocumented_macro 1                # not documented → plain text
+```
+
 ## Multiple methods
 
 `foo` has two documented methods, [`foo(a)`](@ref) and [`foo(a, b)`](@ref), each
@@ -36,6 +50,7 @@ stays unlinked.
 a = foo(1)      # links the foo(a) docstring
 b = foo(1, 2)   # links the foo(a, b) docstring
 c = foo         # plain value mention → no link
+d = DocumenterCodeBlocks.foo(1)   # qualified call: the link is on the name only
 ```
 
 ## Hover popups

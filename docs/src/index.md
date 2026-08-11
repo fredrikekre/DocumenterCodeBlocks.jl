@@ -8,7 +8,8 @@ enhances Julia code blocks:
   a stable fragment like `#c-1a2b3c4d-L3-L7` in the URL.
 - **[Reference links](@ref references)**: identifiers in code blocks that name
   a documented object link to its docstring — call-arity aware, so
-  `foo(1, 2)` links to the `foo(a, b)` method documentation.
+  `foo(1, 2)` links to the `foo(a, b)` method documentation. Macro names
+  link too.
 - **[Hover tooltips](@ref tooltips)** on every reference link, doxygen style:
   the target's signature and a one-line summary, embedded at build time.
   Ambiguous references show the candidate-method list.

@@ -38,4 +38,6 @@ measure()
 combine
 process(data::AbstractMatrix, weights::AbstractVector)
 process(data::AbstractVector)
+@twice
+@w_str
 ```
