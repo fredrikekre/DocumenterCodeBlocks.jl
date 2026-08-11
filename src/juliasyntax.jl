@@ -236,27 +236,54 @@ function _name_span(node)
     return (s, e)
 end
 
+# Binding contexts (issue #9): value-mention links are suppressed where a
+# name is being *bound* rather than used. Three shapes:
+# - assign-like nodes bind their LHS; from the operator token on, the RHS is
+#   ordinary value code again (this reset also un-binds nested RHSes, e.g. a
+#   default value inside a signature: `function f(x = default)`),
+# - definition-like nodes bind their signature part until the body,
+# - declaration-like nodes bind throughout (`local x`, `struct` fields,
+#   import/export lists, and the members of a dotted path — the whole path
+#   already resolved as one name).
+# Role-vouched links (call callees, type positions) are unaffected: `x::T = 1`
+# still links `T`, and a definition still links its own (documented) name.
+const _BIND_LHS = (K"=", K"op=", K"in", K"∈", K"->", K"iteration")
+const _BIND_SIG = (K"function", K"macro", K"module", K"baremodule")
+const _BIND_ALL = (
+    K"struct", K"abstract", K"primitive", K"local", K"global", K"const",
+    K"import", K"using", K"export", K"public", K".",
+)
+
 # The single recursive pass: emit `node` (at byte `offset`) under inherited `role`.
 # `arity` is the call argument count to pass to link resolution for a callee node
 # (or `nothing`), so a call links to the method with that many arguments.
 # `pref` is a pre-resolved reference handed down by a `macrocall` parent whose
 # name is this (dotted) node — the link is opened here so it can wrap just the
-# name part instead of the whole qualified path.
-function _emit!(io, cu, node, offset, role, arity, in_link, resolve, pref = nothing)
+# name part instead of the whole qualified path. `binding` marks a
+# binding position (see above): names there are not uses and get no value link.
+function _emit!(io, cu, node, offset, role, arity, in_link, resolve, pref = nothing, binding = false)
     k = _JS.kind(node)
     r = _noderange(offset, node)
 
-    # Only positions whose syntactic role vouches for the meaning get reference
-    # links: call/dotcall callees (:funcall) and type positions (:type). Plain
-    # value mentions (`x = foo`, `map(foo, xs)`) and binding positions (LHS of
-    # `=`, definition parameters, kwarg names) stay plain — without scope
-    # analysis we can't tell a documented name from a local that shadows it.
+    # Positions whose syntactic role vouches for the meaning — call/dotcall
+    # callees (:funcall) and type positions (:type) — link arity-aware. Plain
+    # value mentions (`x = foo`, `map(foo, xs)`, `zero(T)`) link too, unless
+    # the position binds the name (`binding`).
     linkable = role === :funcall || role === :type
 
     if _JS.is_leaf(node)
         name = k == K"Identifier" ? Symbol(_text(cu, r)) : Symbol("")
         face = _leaf_face(k, role, name, _JS.is_trivia(node))
-        ref = (linkable && !in_link && resolve !== nothing && k == K"Identifier") ? resolve(_text(cu, r), arity) : nothing
+        ref = nothing
+        if !in_link && resolve !== nothing && k == K"Identifier"
+            if linkable
+                ref = resolve(_text(cu, r), arity)
+            elseif face === :none && !binding
+                # A bare identifier used as a value (issue #9). The :none-face
+                # gate keeps operators, quoted symbols, and singletons plain.
+                ref = resolve(_text(cu, r), nothing)
+            end
+        end
         _emit_leaf(io, _text(cu, r), face, ref)
         return
     end
@@ -264,10 +291,11 @@ function _emit!(io, cu, node, offset, role, arity, in_link, resolve, pref = noth
     # A dotted name (Foo.bar) resolves as a whole, but the link wraps only the
     # trailing name — the module qualifier and dot stay outside. `pref` is the
     # already-resolved reference when a macrocall parent delegated its dotted
-    # name here.
+    # name here. Value mentions of dotted names link like bare ones do.
     dotref = pref
-    if dotref === nothing && linkable && !in_link && resolve !== nothing &&
-            k == K"." && _is_dotted_name(node)
+    if dotref === nothing && !in_link && resolve !== nothing &&
+            k == K"." && _is_dotted_name(node) &&
+            (linkable || (role === :none && !binding))
         dotref = resolve(_text(cu, r), arity)
     end
     dotspan = dotref === nothing ? nothing : _name_span(node)
@@ -304,6 +332,10 @@ function _emit!(io, cu, node, offset, role, arity, in_link, resolve, pref = noth
     symbol_quote = k == K"quote" && _is_symbol_quote(node)
     seen_coloncolon = false
     callee_done = false
+    seen_op = false        # assign-like: the `=`/`in`/`->` token was passed
+    body_started = false   # definition-like: the body block (or short-form `=`) was reached
+    let_bound = false      # let: only the first block holds the bindings
+    after_where = false    # where: the introduced type variables bind
 
     o, i = offset, 0
     for c in _JS.children(node)
@@ -330,6 +362,29 @@ function _emit!(io, cu, node, offset, role, arity, in_link, resolve, pref = noth
             crole = (i == last_ident) ? role : :none      # only the last id carries the role
             carity = (i == last_ident) ? arity : nothing
         end
+        # Binding context for this child (see _BIND_* above). Inherited by
+        # default; LHS/signature/declaration positions set it, and the value
+        # side of an assign-like node resets it.
+        cbind = binding
+        if k in _BIND_LHS
+            cbind = !seen_op
+            kc in (K"=", K"in", K"∈", K"->") && (seen_op = true)
+        elseif k in _BIND_SIG
+            kc == K"block" && (body_started = true)       # the block IS the body
+            cbind = !body_started
+            kc == K"=" && (body_started = true)           # short form: `f(x) = body`
+        elseif k in _BIND_ALL
+            cbind = true
+        elseif k == K"let"
+            (kc == K"block" && !let_bound) && ((cbind, let_bound) = (true, true))
+        elseif k == K"do"
+            kc == K"tuple" && (cbind = true)              # the do-block arguments
+        elseif k == K"catch"
+            kc != K"block" && (cbind = true)              # `catch e` binds e
+        elseif k == K"where"
+            cbind = after_where
+            kc == K"where" && (after_where = true)
+        end
         # The link wraps the children in `dotspan`/the macro-name span; the
         # other children of a linked node are emitted `in_link` anyway so the
         # name resolves once, as a whole (no stray link on a module prefix).
@@ -342,7 +397,7 @@ function _emit!(io, cu, node, offset, role, arity, in_link, resolve, pref = noth
         (wrapname && i == macroname.first) && _print_ref_open(io, macroref)
         _emit!(
             io, cu, c, o, crole, carity,
-            in_link || wrapname || dotspan !== nothing, resolve, cpref,
+            in_link || wrapname || dotspan !== nothing, resolve, cpref, cbind,
         )
         (wrapname && i == macroname.last) && print(io, "</a>")
         (indot && i == dotspan[2]) && print(io, "</a>")
