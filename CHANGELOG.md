@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.0] - Unreleased
+
+### Added
+ - External documentation links via
+   [DocumenterInterLinks](https://github.com/JuliaDocs/DocumenterInterLinks.jl):
+   when a name in a code block has no local docstring, it now falls back to
+   the inventories of an `InterLinks` plugin passed to `makedocs` — the same
+   inventories the `@extref` prose macro uses. The plugin is picked up
+   automatically from the Documenter build; nothing is configured on the
+   `CodeBlocks` side. External links carry the CSS class `julia-ref external`,
+   are marked with a small ↗ after the name, and their tooltip shows the
+   qualified name plus the project (and version) they link to. Qualified
+   names whose package is not loaded in the docs environment (`SomePkg.foo`)
+   are looked up verbatim. Opt out with `CodeBlocks(external_links = false)`.
+   DocumenterInterLinks and DocInventories are now (light) dependencies of
+   this package.
+
 ## [v1.3.0] - 2026-08-13
 
 ### Added
@@ -90,6 +107,7 @@ See [README.md](README.md) and the documentation for details.
 [v1.1.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.1.0
 [v1.2.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.2.0
 [v1.3.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.3.0
+[v1.4.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.4.0
 [#3]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/3
 [#5]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/5
 [#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6

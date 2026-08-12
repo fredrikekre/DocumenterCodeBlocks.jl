@@ -1,6 +1,8 @@
 using Test
 using Logging: Logging
 using Documenter: Documenter
+using DocInventories: Inventory, InventoryItem
+using DocumenterInterLinks: InterLinks
 using DocumenterCodeBlocks
 const DCB = DocumenterCodeBlocks
 
@@ -304,6 +306,92 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         s, clipped = DCB._first_sentence("a "^150)   # 300 chars, no sentence boundary
         @test clipped && length(s) <= 200
         @test DCB._first_sentence("   ") == (nothing, false)
+    end
+
+    @testset "external links" begin
+        # Names without a local docstring fall back to the inventories of a
+        # DocumenterInterLinks plugin found in doc.plugins (no configuration on
+        # the CodeBlocks side). Built fully offline from an Inventory instance.
+        # NOTE: InterLinks' `alias_methods_as_function` aliases are only added
+        # for inventories loaded from file/URL, not Inventory instances — hence
+        # plain (non-method) names in the fake items.
+        inv = Inventory(
+            project = "Extern", version = "1.2.3",
+            root_url = "https://example.invalid/Extern/stable/",
+            items = [
+                InventoryItem(name = "Extern.frobnicate", role = "function", uri = "api/#Extern.frobnicate"),
+                InventoryItem(name = "Base.sort", role = "function", uri = "base/#Base.sort"),
+                InventoryItem(name = "Base.@time", role = "macro", uri = "base/#Base.@time"),
+                InventoryItem(name = "DocumenterCodeBlocks.CodeBlocks", role = "type", uri = "fake/#DocumenterCodeBlocks.CodeBlocks"),
+                InventoryItem(name = "Onlystd.thing", domain = "std", role = "label", uri = "labels/#thing"),
+            ],
+        )
+        page = """
+            # T
+
+            ```julia
+            sort([2, 1])
+            @time 1
+            Extern.frobnicate(1)
+            Onlystd.thing
+            frobnicate(1)
+            plugin = CodeBlocks()
+            ```
+
+            ```@docs
+            DocumenterCodeBlocks.CodeBlocks
+            ```
+            """
+        build(; plugins) = mktempdir() do dir
+            mkpath(joinpath(dir, "src"))
+            write(joinpath(dir, "src", "index.md"), page)
+            Logging.with_logger(Logging.NullLogger()) do
+                Documenter.makedocs(
+                    root = dir, sitename = "t", remotes = nothing, plugins = plugins,
+                    format = Documenter.HTML(edit_link = nothing, inventory_version = "0"),
+                )
+            end
+            return read(joinpath(dir, "build", "index.html"), String)
+        end
+        links = Logging.with_logger(Logging.NullLogger()) do
+            InterLinks("Extern" => inv)
+        end
+
+        html = build(plugins = [CodeBlocks(), links])
+        root = "https://example.invalid/Extern/stable/"
+        # Undocumented-locally names link out, marked external, via the
+        # fully qualified binding slug — including macros.
+        @test occursin(
+            "<a class=\"julia-ref external\" href=\"$(root)base/#Base.sort\">" *
+                "<span class=\"julia-funcall\">sort</span>", html,
+        )
+        @test occursin("href=\"$(root)base/#Base.@time\"", html)
+        # Verbatim dotted-name fallback: module `Extern` is not loaded here.
+        @test occursin("href=\"$(root)api/#Extern.frobnicate\"", html)
+        # External targets get a minimal tooltip naming the linked project.
+        @test occursin("data-for=\"$(root)base/#Base.sort\"", html)
+        @test occursin("External documentation (Extern 1.2.3).", html)
+        # std-domain entries (section labels) never match code identifiers.
+        @test !occursin("labels/#thing", html)
+        # Bare undefined identifiers don't reach the inventories.
+        @test !occursin("Extern/stable/\">frobnicate", html) && !occursin("#frobnicate", html)
+        # A local docstring wins over an inventory entry for the same name.
+        @test occursin(
+            "<a class=\"julia-ref\" href=\"#DocumenterCodeBlocks.CodeBlocks\">" *
+                "<span class=\"julia-funcall\">CodeBlocks</span>", html,
+        )
+        @test !occursin("fake/#DocumenterCodeBlocks.CodeBlocks", html)
+
+        # Opt-out kwarg: nothing links externally (local links remain).
+        html = build(plugins = [CodeBlocks(external_links = false), links])
+        @test !occursin("julia-ref external", html)
+        @test !occursin("example.invalid", html)
+        @test occursin("href=\"#DocumenterCodeBlocks.CodeBlocks\"", html)
+
+        # No InterLinks plugin at all: unchanged output, no external links.
+        html = build(plugins = [CodeBlocks()])
+        @test !occursin("julia-ref external", html)
+        @test !occursin("example.invalid", html)
     end
 
     @testset "docsite build" begin

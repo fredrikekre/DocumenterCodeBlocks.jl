@@ -99,7 +99,8 @@ end
 # its variant tip via `data-ref-tip` — the href alone would find the shared,
 # un-narrowed payload.
 function _print_ref_open(io, ref)
-    print(io, "<a class=\"julia-ref\" href=\"", _escape_html(ref.href), "\"")
+    external = get(ref, :external, false) ? " external" : ""
+    print(io, "<a class=\"julia-ref", external, "\" href=\"", _escape_html(ref.href), "\"")
     if length(ref.targets) > 1
         print(io, " data-ref-targets=\"", _escape_html(_targets_json(ref.targets)), "\"")
     elseif (t = only(ref.targets)).tipkey != t.href
