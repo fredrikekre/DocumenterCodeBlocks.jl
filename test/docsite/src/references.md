@@ -9,9 +9,10 @@ should resolve to their docstrings (defined on the [home page](@ref "DocumenterC
 
 This block uses documented names (`add_numbers`, `greet`, `MyType`) that the
 plugin should turn into links to their docstring anchors, plus an undocumented
-name (`undocumented_helper`) that must stay plain text. Links only attach where
-the syntax vouches for the meaning — call callees and type annotations (like the
-`m::MyType` argument below); plain value mentions stay unlinked (see below).
+name (`undocumented_helper`) that must stay plain text. Call callees, type
+annotations (like the `m::MyType` argument below), and plain value mentions
+all link; names in binding positions — like the parameter `m` — do not (see
+below).
 
 ```julia
 function demo(m::MyType)
@@ -43,14 +44,17 @@ s = w"hello"                         # string macro
 
 `foo` has two documented methods, [`foo(a)`](@ref) and [`foo(a, b)`](@ref), each
 with its own docstring. Call sites link arity-aware; a plain value mention of
-`foo` is not a call (and could be a local shadowing the documented name), so it
-stays unlinked.
+`foo` links too (with the unknown-arity candidate list), but a **binding** of
+the name — left of `=`, a parameter, a loop variable — is not a use and stays
+unlinked.
 
 ```julia
 a = foo(1)      # links the foo(a) docstring
 b = foo(1, 2)   # links the foo(a, b) docstring
-c = foo         # plain value mention → no link
+c = foo         # value mention → links (both methods listed)
 d = DocumenterCodeBlocks.foo(1)   # qualified call: the link is on the name only
+e = map(foo, [1, 2])              # passed as a value → links
+foo = c         # binding position (left of =) → no link
 ```
 
 ## Hover popups

@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.2.0] - 2026-08-10
+## [v1.2.0] - 2026-08-11
 
 ### Added
  - Macro names in code blocks now link to their docstring, like function calls
    and type annotations already did. ([#8], [#10])
+ - Identifiers used as plain *values* — function arguments (`zero(T)`),
+   enum/constant mentions, the right-hand side of `=`, … — now link to their
+   docstring like call callees and type annotations already did. Names in
+   *binding* positions (left of `=`, function parameters, loop variables,
+   `local`/`const` declarations, …) are not uses and stay unlinked. ([#9],
+   [#12])
 
 ### Changed
  - Reference links on qualified names (`Foo.bar(...)`, `Foo.@bar`,
@@ -65,3 +71,5 @@ See [README.md](README.md) and the documentation for details.
 [#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6
 [#8]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/8
 [#10]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/10
+[#9]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/9
+[#12]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/12

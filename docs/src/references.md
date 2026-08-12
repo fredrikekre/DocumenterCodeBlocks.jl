@@ -22,17 +22,20 @@ Hover (or click) `MyType`, `add_numbers`, and `greet` above — and note that
 `undocumented_helper` stays plain text: names that don't resolve are left
 alone, silently.
 
-Links only attach where the syntax vouches for the meaning: **call callees**
-(`add_numbers(...)`) and **type positions** (`m::MyType`). Plain value
-mentions and binding positions never link — without scope analysis, a local
-variable that shadows a documented name is indistinguishable from the real
-thing:
+Links attach to **call callees** (`add_numbers(...)`), **type positions**
+(`m::MyType`), and plain **value mentions** — a documented name used as a
+function argument, on the right of `=`, in a condition, and so on, like
+`zero(MyType)` or a documented constant. What never links is a **binding**:
+a name to the left of `=`, a function parameter, a loop variable — there the
+name is not a use of the documented object (in the block above, the parameter
+`m` binds and stays plain):
 
 ```julia
 a = foo(1)      # links the foo(a) docstring
 b = foo(1, 2)   # links the foo(a, b) docstring
-c = foo         # plain value mention → no link
+c = foo         # value mention → links, listing both methods
 d = DocumenterCodeBlocks.foo(1)   # qualified call
+foo = c         # binding (left of =) → no link
 ```
 
 As the block above shows, resolution is **arity-aware**: a call with `n`
