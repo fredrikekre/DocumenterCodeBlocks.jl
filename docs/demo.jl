@@ -254,6 +254,16 @@ its signature header must be stripped of gutter/links just like the first.
 combine(a, b, c) = (a, b, c)
 
 """
+    clone(m::MyType; deep::Bool = false) -> MyType
+
+Return a copy of `m`. The signature header above references the documented
+type [`MyType`](@ref) twice — as the argument annotation and as the `->`
+return type — and both mentions link, while the parameter names and `clone`
+itself stay plain.
+"""
+clone(m::MyType; deep::Bool = false) = MyType(m.x)
+
+"""
     @twice(expr)
 
 Evaluate `expr` twice and return the value of the second evaluation. A

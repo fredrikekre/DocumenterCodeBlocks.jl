@@ -66,17 +66,27 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         @test !occursin("<span class=\"julia-funcall\">f</span> (generic", r2)
     end
 
-    @testset "macro names" begin
-        # A stub resolver records the names asked for and links every one, so
-        # the shapes of macro-name references can be checked without a build.
+    # An allowlist stub resolver: records every name link resolution is asked
+    # for, and links exactly the allowed ones — so link shapes can be checked
+    # without a docsite build.
+    function mkstub(allowed...)
         asked = String[]
-        function stub(name, arity)
+        stub = function (name, arity)
             push!(asked, name)
+            name in allowed || return nothing
             t = (href = "#$name", tipkey = "#$name", label = name, sig = name, brief = nothing)
             return (href = t.href, targets = [t])
         end
+        return asked, stub
+    end
+    link(name) = "<a class=\"julia-ref\" href=\"#$name\">"
+
+    @testset "macro names" begin
+        asked, stub = mkstub(
+            "@time", "f", "Foo.@bar", "@Foo.bar", "@raw_str", "@x_cmd",
+            "Foo.@bar_str", "Foo.Sub.@bar_cmd", "Foo.bar", "Foo.Bar",
+        )
         h(src) = DCB.highlight_julia_html(src; resolve = stub)
-        link(name) = "<a class=\"julia-ref\" href=\"#$name\">"
         # The `@` sigil is part of the link, and the arguments are not.
         @test h("@time f(x)") ==
             link("@time") * "<span class=\"julia-macro\">@</span>" *
@@ -118,10 +128,55 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
                 "<span class=\"julia-type\">Bar</span></a>",
         )
         empty!(asked)
-        h("@show(a, b)\n@__MODULE__\nf(@view A[1])\nx::@NamedTuple{a::Int}")
-        @test asked == ["@show", "@__MODULE__", "f", "@view", "@NamedTuple", "Int"]
+        h("@show(a, b)\n@__MODULE__\nf(@view A[1])")
+        # Macro names, callees, and value mentions (the macro arguments) all
+        # ask for resolution.
+        @test asked == ["@show", "a", "b", "@__MODULE__", "f", "@view", "A"]
         # Nothing links without a resolver (docstring signature headers).
         @test !occursin("julia-ref", DCB.highlight_julia_html("@time f(x)"))
+    end
+
+    @testset "value mentions and bindings" begin
+        # Value positions link (issue #9); binding positions do not.
+        _, stub = mkstub("foo", "T", "Foo.bar")
+        h(src) = DCB.highlight_julia_html(src; resolve = stub)
+        # RHS of `=`, call arguments, conditions, ternary branches: values.
+        @test h("x = foo") ==
+            "x <span class=\"julia-keyword\">=</span>" * " " * link("foo") * "foo</a>"
+        @test h("zero(T)") ==
+            "<span class=\"julia-funcall\">zero</span>(" * link("T") * "T</a>)"
+        @test occursin(link("foo") * "foo</a>, xs", h("map(foo, xs)"))
+        @test occursin(link("foo"), h("if foo\nend"))
+        @test occursin(link("Foo.bar") * "bar</a>", h("x = Foo.bar"))
+        @test occursin(link("foo"), h("f(a; kw = foo)"))       # kwarg VALUE
+        # Binding positions: LHS of (op-)assignment, parameters, loop
+        # variables, declarations, do/lambda arguments, catch, field access.
+        for src in (
+                "foo = 1", "foo += 1", "foo, T = 1, 2", "for foo in xs\nend",
+                "[i for foo in xs]", "foo -> 1", "local foo", "const foo = 1",
+                "struct foo\n    T::Int\nend", "import Foo: foo", "using foo",
+                "export foo", "try f() catch foo\nend", "f(foo = 1)",
+                "foo[1] = x", "foo.x = 1", "t.foo",
+            )
+            @test !occursin("julia-ref", h(src))
+        end
+        # The value side of a binding context is ordinary code again: bodies
+        # link, and so does the RHS of a `let`/`const`/default-value `=`.
+        @test occursin(link("foo") * "foo</a>\n", h("function g(foo)\n    foo\nend"))
+        @test occursin(link("foo"), h("g(foo) = foo + 1"))
+        @test occursin(link("T"), h("const foo = T"))
+        @test count("julia-ref", h("let foo = T\n    foo\nend")) == 2   # T + body foo
+        @test occursin(link("foo") * "foo</a>\n", h("map(xs) do foo\n    foo\nend"))
+        # Role-vouched links are unaffected by binding contexts: the annotated
+        # parameter's type still links inside a signature.
+        @test occursin(link("T") * "<span class=\"julia-type\">T</span></a>", h("g(x::T) = x"))
+        # `binding = true` starts emission in a binding context — the mode
+        # signature headers use: parameter names bind, while type annotations
+        # and the `-> T` return-type position link.
+        hh = DCB.highlight_julia_html("g(foo::T) -> foo"; resolve = stub, binding = true)
+        @test count(link("foo"), hh) == 1               # only the return position
+        @test endswith(hh, link("foo") * "foo</a>")
+        @test occursin(link("T") * "<span class=\"julia-type\">T</span></a>", hh)
     end
 
     @testset "split_highlighted" begin
@@ -212,9 +267,17 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         ]
 
         @testset "role-gated reference links" begin
-            # foo appears in 5 call positions (one qualified); plain value
-            # mentions must not link.
-            @test length(link_hrefs(refs, "foo-Tuple")) == 5
+            # foo links from 5 call positions (one qualified) plus 2 value
+            # mentions (`c = foo`, `map(foo, …)`); the binding `foo = c` and
+            # the plain-text mentions must not link.
+            @test length(link_hrefs(refs, "foo-Tuple")) == 7
+            # The value mention has an unknown arity: both methods listed.
+            @test occursin(
+                r"c <span class=\"julia-keyword\">=</span> <a class=\"julia-ref\" href=\"[^\"]*foo-Tuple\{Any\}\"[^>]*data-ref-targets",
+                refs,
+            )
+            # The binding stays plain: `foo = c` emits no link around foo.
+            @test occursin(r"\bfoo <span class=\"julia-keyword\">=</span> c\b", refs)
             # The qualified call's link wraps the name only.
             @test occursin(
                 r"DocumenterCodeBlocks<span class=\"julia-operator\">\.</span><a class=\"julia-ref\" href=\"[^\"]*foo-Tuple\{Any\}\"[^>]*><span class=\"julia-funcall\">foo</span></a>",
@@ -294,9 +357,21 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             @test occursin("fit(x::AbstractVector, y::AbstractVector)", refs)
         end
 
+        # The <details> element of the docstring anchored at `id`.
+        function docstring_details(html, id)
+            o = findfirst("<summary id=\"$id\">", html)
+            @assert o !== nothing
+            c = findnext("</details>", html, last(o))
+            return SubString(html, first(o), last(c))
+        end
+        # A docstring's signature header block (its leading code block).
+        sig_header(details) = match(
+            r"<section[^>]*><div><pre><code class=\"nohighlight hljs\">(.*?)</code></pre>"s,
+            details,
+        ).captures[1]
+
         @testset "signature headers in docstrings" begin
-            # The leading code block of a docstring gets highlighting only:
-            # no id/gutter/links.
+            # The leading code block of a docstring gets no id/gutter.
             @test occursin("<section><div><pre><code class=\"nohighlight hljs\">", index)
             @test !occursin("<section><div><pre id=", index)
             # Both headers of the aggregated `combine` entry are stripped —
@@ -310,16 +385,21 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
                 )
             ) == 2
             @test occursin("<section id=\"", index) == SUBANCHORS
+            # Documented types in a header link (issue #11): clone's header
+            # references MyType as argument annotation AND `->` return type.
+            clone = sig_header(docstring_details(index, "DocumenterCodeBlocks.clone"))
+            @test count("julia-ref\" href=\"#DocumenterCodeBlocks.MyType\"", clone) == 2
+            # The documented name itself and the parameters stay plain.
+            @test !occursin("julia-ref\" href=\"#DocumenterCodeBlocks.clone", clone)
+            @test occursin("<span class=\"julia-funcall\">clone</span>(m", clone)
+            # A same-arity typed sibling is a self reference too: the header of
+            # qux(x::String) must not link `qux` through qux(x::Int)'s anchor
+            # (the candidate targets include the enclosing docstring).
+            quxs = sig_header(docstring_details(index, "DocumenterCodeBlocks.qux-Tuple{String}"))
+            @test !occursin("julia-ref", quxs)
         end
 
         @testset "self references in docstrings" begin
-            # The <details> element of the docstring anchored at `id`.
-            function docstring_details(html, id)
-                o = findfirst("<summary id=\"$id\">", html)
-                @assert o !== nothing
-                c = findnext("</details>", html, last(o))
-                return SubString(html, first(o), last(c))
-            end
             selflink(id) = "julia-ref\" href=\"#$id\""
             # foo(i) inside foo(a)'s docstring is a self reference: not linked.
             # Other documented names in the same block still link.

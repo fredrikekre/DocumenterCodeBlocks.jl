@@ -49,10 +49,10 @@ function check(name, ok, extra) {
   check("ambiguous links carry data-ref-targets", nAmbig >= 2, `found ${nAmbig}`);
 
   // --- role gating: only callees and type positions link -------------------
-  // foo appears in 5 call positions (one qualified); the plain value mentions
-  // (`c = foo`) must NOT produce links, so exactly 5 foo links exist.
+  // foo links from 5 call positions and 2 value mentions; the binding
+  // (`foo = c`) must NOT produce a link, so exactly 7 foo links exist.
   const nFoo = await page.locator('a.julia-ref[href*="foo-Tuple"]').count();
-  check("plain value mentions are not linked (5 foo call links)", nFoo === 5, `found ${nFoo}`);
+  check("value mentions link, bindings do not (7 foo links)", nFoo === 7, `found ${nFoo}`);
   // `m::MyType` annotation + `MyType(3)` callee both link.
   const nMyType = await page.locator('a.julia-ref[href$="MyType"]').count();
   check("type annotations link (2 MyType links)", nMyType >= 2, `found ${nMyType}`);
