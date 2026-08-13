@@ -1,5 +1,6 @@
 using Documenter: Documenter, makedocs, deploydocs, DocMeta
 using DocumenterCodeBlocks
+using DocumenterInterLinks: InterLinks
 
 # The demo API the manual demonstrates reference links/tooltips against is
 # evaluated INTO the DocumenterCodeBlocks module — nothing ships with the
@@ -36,6 +37,12 @@ makedocs(
     modules = [DocumenterCodeBlocks],
     plugins = [
         CodeBlocks(),
+        # Demonstrates the external-link fallback in references.md: names
+        # without a local docstring link out via these inventories.
+        InterLinks(
+            "Julia" => "https://docs.julialang.org/en/v1/",
+            "Documenter" => "https://documenter.juliadocs.org/stable/",
+        ),
     ],
     pages = [
         "Home" => "index.md",

@@ -20,7 +20,7 @@ end
 BlockMeta(mod::Module, line_counter::Symbol) = BlockMeta(mod, line_counter, nothing)
 
 """
-    CodeBlocks(; languages=["julia"], reference_links=true, popups=true, line_numbers=true, repl_line_numbers=true, min_lines=1, line_counter=:restart)
+    CodeBlocks(; languages=["julia"], reference_links=true, popups=true, external_links=true, line_numbers=true, repl_line_numbers=true, min_lines=1, line_counter=:restart)
 
 Documenter plugin that enhances code blocks with syntax highlighting, line
 numbers / linkable lines, and reference links — all in a single pass. Julia is
@@ -36,6 +36,12 @@ blocks), so no node/`prerender` is needed.
   When a reference matches several documented methods (a bare identifier, a
   splatted call, …) the tooltip instead lists all candidate signatures to pick
   from. Requires `reference_links=true`.
+- `external_links`: when a name is not documented locally and a
+  [DocumenterInterLinks](https://github.com/JuliaDocs/DocumenterInterLinks.jl)
+  `InterLinks` plugin is passed to `makedocs`, link it to the external
+  documentation (the same inventories `@extref` uses — no extra configuration
+  needed). External links are marked with a small ↗ and their tooltip names the
+  project they link to. Requires `reference_links=true`.
 - `line_numbers`: add the line-number gutter + linkable lines. When `false`, blocks
   are still highlighted (and linked) but rendered without a gutter.
 - `repl_line_numbers`: also add the gutter to REPL transcripts (`julia-repl`
@@ -88,6 +94,7 @@ struct CodeBlocks <: Documenter.Plugin
     languages::Vector{String}
     reference_links::Bool
     popups::Bool
+    external_links::Bool
     line_numbers::Bool
     repl_line_numbers::Bool
     min_lines::Int
@@ -108,8 +115,8 @@ struct CodeBlocks <: Documenter.Plugin
     warned::Set{String}
 end
 function CodeBlocks(;
-        languages = ["julia"], reference_links = true, popups = true, line_numbers = true,
-        repl_line_numbers = true, min_lines = 1, line_counter = :restart,
+        languages = ["julia"], reference_links = true, popups = true, external_links = true,
+        line_numbers = true, repl_line_numbers = true, min_lines = 1, line_counter = :restart,
     )
     line_counter isa Symbol && line_counter in (:restart, :continue, :named) || throw(
         ArgumentError(
@@ -118,8 +125,8 @@ function CodeBlocks(;
         ),
     )
     return CodeBlocks(
-        languages, reference_links, popups, line_numbers, repl_line_numbers, min_lines,
-        line_counter,
+        languages, reference_links, popups, external_links, line_numbers, repl_line_numbers,
+        min_lines, line_counter,
         Set{UInt32}(), Dict{String, Dict{Tuple{Symbol, UInt32}, Vector{BlockMeta}}}(),
         Set{String}(),
     )

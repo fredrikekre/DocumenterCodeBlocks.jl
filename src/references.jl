@@ -9,6 +9,8 @@
 
 using Documenter: Documenter
 import Documenter.DocSystem
+using DocumenterInterLinks: InterLinks
+using DocInventories: DocInventories
 
 # `page.build` is the pre-prettyurl `.md` destination under doc.user.build, so its
 # path relative to the build dir is exactly the page key (e.g. "references.md").
@@ -64,9 +66,14 @@ function resolve_reference(name::AbstractString, doc, page, arity = nothing, plu
     binding = try
         DocSystem.binding(mod, ex)
     catch
-        return nothing
+        nothing
     end
-    binding === nothing && return nothing
+    if binding === nothing
+        # The module is not loaded in the docs environment; a qualified name can
+        # still be looked up verbatim in external inventories (their slugs are
+        # fully qualified, and macro spellings match: `Foo.@bar`, `Foo.@bar_str`).
+        return occursin(".", name) ? _external_reference(doc, plugin, name) : nothing
+    end
 
     # When the identifier is a call of known arity, ask for a method with that
     # many arguments (`Tuple{Any,…}`) so `foo(1, 2)` links to the `foo(a, b)`
@@ -80,9 +87,16 @@ function resolve_reference(name::AbstractString, doc, page, arity = nothing, plu
     object = try
         Documenter.find_object(doc, binding, typesig)
     catch
-        return nothing
+        nothing
     end
-    (object === nothing || !haskey(doc.internal.objects, object)) && return nothing
+    if object === nothing || !haskey(doc.internal.objects, object)
+        # Not documented locally → try external inventories under the same fully
+        # qualified slug Documenter uses ("Base.sort", "Base.@time", …). Bare
+        # undefined identifiers (loop temps, …) never reach the inventories, but
+        # a written-qualified name does even when currently undefined.
+        (Base.Docs.defined(binding) || occursin(".", name)) || return nothing
+        return _external_reference(doc, plugin, Documenter.bindingstring(binding))
+    end
 
     prettyurls = (fmt = findfirst_html(doc)) === nothing ? true : fmt.prettyurls
     from = _get_url(page_key(doc, page), prettyurls)
@@ -99,6 +113,60 @@ function resolve_reference(name::AbstractString, doc, page, arity = nothing, plu
         href = length(targets) == 1 ? only(targets).href :
             _object_href(doc, object, from, prettyurls),
         targets = targets,
+    )
+end
+
+# External-documentation fallback: when a name has no local docstring, look it
+# up in the inventories of the user's DocumenterInterLinks plugin (the same ones
+# `@extref` uses). The plugin is read from `doc.plugins` directly — the user
+# configures nothing here — and NOT via `Documenter.getplugin`, which would
+# construct (and cache) an empty `InterLinks` when none was passed to makedocs.
+# Returns `nothing` or the `resolve_reference` shape `(href, targets)` plus
+# `external = true`; the single target reuses the `_target_info` tuple shape so
+# the tooltip machinery works unchanged (no docstring text exists in
+# inventories, so the brief just names the linked project).
+function _external_reference(doc, plugin, slug::AbstractString)
+    plugin !== nothing && !plugin.external_links && return nothing
+    links = get(doc.plugins, InterLinks, nothing)
+    links === nothing && return nothing
+    hit = _interlinks_lookup(links, slug)
+    hit === nothing && return nothing
+    t = (
+        href = hit.href, tipkey = hit.href, label = hit.label, sig = hit.label,
+        brief = "External documentation ($(hit.project)).",
+    )
+    return (href = hit.href, targets = [t], external = true)
+end
+
+# Look `slug` up across the InterLinks inventories: the inventory named after
+# the slug's leading component first (mirroring `find_in_interlinks`'
+# short-circuit), then all inventories in user-declared order. Returns `nothing`
+# or `(href = absolute URL, label = display name, project = "Project X.Y.Z")`.
+function _interlinks_lookup(links::InterLinks, slug::AbstractString)
+    m = match(r"^@?(\w+)\.", slug)
+    if m !== nothing
+        inv = get(links.inventories, m.captures[1], nothing)
+        if inv !== nothing
+            hit = _inventory_lookup(inv, m.captures[1], slug)
+            hit === nothing || return hit
+        end
+    end
+    for name in links.names
+        hit = _inventory_lookup(links.inventories[name], name, slug)
+        hit === nothing || return hit
+    end
+    return nothing
+end
+
+function _inventory_lookup(inv, project::AbstractString, slug::AbstractString)
+    # domain="jl" keeps std:label/std:doc entries (section titles, pages) from
+    # colliding with code identifiers.
+    item = DocInventories.find_in_inventory(inv, slug; domain = "jl", quiet = true)
+    item === nothing && return nothing
+    return (
+        href = DocInventories.uri(item; root_url = inv.root_url),
+        label = item.dispname == "-" ? item.name : item.dispname,
+        project = isempty(inv.version) ? String(project) : string(project, " ", inv.version),
     )
 end
 

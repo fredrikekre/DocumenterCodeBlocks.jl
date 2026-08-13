@@ -118,9 +118,50 @@ P = process(rand(3, 3), ones(3))   # arity 2 → the multi-line matrix signature
 t = transform([1, 2, 3], sqrt; rev = true)
 ```
 
+## External links
+
+Names that are not documented locally can still link — to **external
+documentation**. When an
+[DocumenterInterLinks](https://github.com/JuliaDocs/DocumenterInterLinks.jl)
+`InterLinks` plugin is passed to `makedocs`, its inventories (the same ones
+the `@extref` prose macro uses) become a fallback for code-block references:
+a block calling `sort` links to the Julia manual when a `Julia` inventory is
+configured. Nothing needs to be passed to `CodeBlocks` — the plugin is picked
+up automatically.
+
+External links are marked with a small ↗ after the name (CSS class
+`julia-ref external`), and their tooltip shows the qualified name plus the
+project (and version) the link goes to — inventories carry no docstring text,
+so there is no summary sentence.
+
+Some details:
+
+- Local docstrings always win; the inventories are only consulted when local
+  resolution fails.
+- Lookup uses the fully qualified name (`Base.sort`, `Base.@time`), resolved
+  through the same binding machinery as local references — so an unqualified
+  `sort` finds `Base.sort`. A qualified name whose package is not even loaded
+  in the docs environment (`SomePkg.foo`) is looked up verbatim.
+- Only `jl`-domain inventory entries match (functions, types, macros, …);
+  section labels and pages (`std` domain) never capture a code identifier.
+- Method entries in inventories carry signature suffixes; InterLinks' default
+  `alias_methods_as_function = true` adds the plain function names, which is
+  what code-block lookup relies on. Keep it enabled.
+
+Calls in this manual link out via the `Julia` and `Documenter` inventories,
+e.g.:
+
+```julia
+xs = sort([3, 1, 2])
+@show length(xs)
+Documenter.makedocs
+```
+
 ## Configuration
 
 - `reference_links = false` turns linking off entirely,
-- `popups = false` keeps the links but disables the tooltips.
+- `popups = false` keeps the links but disables the tooltips,
+- `external_links = false` keeps local links but disables the
+  inventory fallback.
 
-Both are keyword arguments of [`CodeBlocks`](@ref).
+All are keyword arguments of [`CodeBlocks`](@ref).
