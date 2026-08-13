@@ -16,7 +16,7 @@
  *                #c-1a2b3c4d-L5-L10   line range
  *
  * L-numbers are the DISPLAYED line numbers. A block whose numbering continues
- * from earlier blocks on the page (`@codeblocks linenumbers = "continue"`)
+ * from earlier blocks on the page (`@codeblocks line_counter = :continue`)
  * carries data-ln-start on its .code-lines wrapper; internally everything is
  * a 1-based child index, converted at the hash boundary.
  */
