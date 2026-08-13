@@ -441,12 +441,14 @@ end
 # links.
 # Every target that resolves is also recorded (deduplicated by href) in the
 # page-level `tips` collector, which becomes the page's hidden tooltip payload.
-function make_resolver(plugin, doc, page, tips = nothing, self_ids = nothing)
+# `mod` is the module this block's references resolve in (positional
+# `CurrentModule` / the docstring's own module); `nothing` = page-final state.
+function make_resolver(plugin, doc, page, tips = nothing, self_ids = nothing, mod = nothing)
     plugin.reference_links || return nothing
     cache = Dict{Tuple{String, Union{Int, AtLeast, Nothing}}, Any}()
     isself(href, ids) = any(id -> href == "#" * id, ids)
     return function (name, arity)
-        r = get!(() -> resolve_reference(name, doc, page, arity, plugin), cache, (name, arity))
+        r = get!(() -> resolve_reference(name, doc, page, arity, plugin, mod), cache, (name, arity))
         r !== nothing && self_ids !== nothing &&
             (isself(r.href, self_ids) || any(t -> isself(t.href, self_ids), r.targets)) &&
             return nothing
@@ -497,9 +499,9 @@ const _OUTPUT_RE = r"^# output$"m
 # was `jldoctest`-fenced), matching Documenter's fence-first rule.
 function highlight_julia_lines(
         source::AbstractString, plugin, doc, page;
-        jldoctest::Bool = false, tips = nothing, self_ids = nothing,
+        jldoctest::Bool = false, tips = nothing, self_ids = nothing, mod = nothing,
     )
-    resolve = make_resolver(plugin, doc, page, tips, self_ids)
+    resolve = make_resolver(plugin, doc, page, tips, self_ids, mod)
     m = jldoctest ? match(_OUTPUT_RE, source) : nothing
     html = if m === nothing
         highlight_julia_html(source; resolve = resolve)

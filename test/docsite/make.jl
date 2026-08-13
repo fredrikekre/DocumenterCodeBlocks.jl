@@ -48,5 +48,6 @@ makedocs(
         "Skip cases" => "skipcases.md",
         "Reference links" => "references.md",
         "Doctest blocks" => "doctest-blocks.md",
+        "Continued numbering" => "continued.md",
     ],
 )

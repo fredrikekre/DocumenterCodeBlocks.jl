@@ -10,38 +10,214 @@ abstract type CodeBlocksStep <: DocumentPipeline end
 
 Selectors.order(::Type{CodeBlocksStep}) = 6.5   # after RenderDocument (6.0)
 
-# Scan the AST for `jldoctest`-fenced blocks and record each block's source hash.
-# Documenter's `doctest_replace!` (in the Populate step, order 5.0) rewrites the
-# fence to julia/julia-repl, so we must run after ExpandTemplates (2.0, docstrings
-# expanded) but before Populate (5.0), while the `jldoctest` fence still exists.
-# This lets the post-render step apply the script-style `# output` split only to
-# real doctests — matching Documenter's fence-first rule.
-abstract type JldoctestScanStep <: DocumentPipeline end
+# ---------------------------------------------------------------------------
+# The `@codeblocks` block: page-local plugin options, positional like `@meta`
+# ---------------------------------------------------------------------------
+#
+#     ```@codeblocks
+#     line_counter = :continue
+#     ```
+#
+# Documenter warns about unknown keys in `@meta` blocks (hard-coded allowlist
+# in its MetaBlocks expander), so the plugin brings its own meta-like block.
+# The expanded node reuses `Documenter.MetaNode`: the HTML writer renders a
+# MetaNode as nothing, Documenter's own meta walkers merge its dict harmlessly,
+# and the ScanStep below picks the settings up positionally, exactly like
+# `@meta`. The dict key is CodeBlocks-prefixed only because all MetaNode dicts
+# — ours and `@meta`'s — merge into the same positional state; users never
+# write it.
 
-Selectors.order(::Type{JldoctestScanStep}) = 4.5   # after ExpandTemplates (2.0), before Populate (5.0)
+abstract type CodeBlocksExpander <: Documenter.Expanders.ExpanderPipeline end
 
-function Selectors.runner(::Type{JldoctestScanStep}, doc::Documenter.Document)
+Selectors.order(::Type{CodeBlocksExpander}) = 2.05   # right after MetaBlocks (2.0)
+Selectors.matcher(::Type{CodeBlocksExpander}, node, page, doc) =
+    Documenter.iscode(node, "@codeblocks")
+
+const _LINE_COUNTER_KEY = :CodeBlocksLineCounter
+
+# The option value: only `:symbol` literals are accepted (matching the
+# Symbol-typed global options of `CodeBlocks`).
+_option_symbol(v::QuoteNode) = v.value isa Symbol ? v.value : nothing
+_option_symbol(v) = nothing
+
+function Selectors.runner(::Type{CodeBlocksExpander}, node, page, doc)
+    x = node.element
+    settings = Dict{Symbol, Any}()
+    lines = Documenter.find_block_in_file(x.code, page.source)
+    for (ex, _) in Documenter.parseblock(x.code, doc, page; lines = lines)
+        Documenter.isassign(ex) || continue
+        key, value = ex.args[1], ex.args[2]
+        if key === :line_counter
+            mode = _option_symbol(value)
+            if mode in (:restart, :continue, :named)
+                settings[_LINE_COUNTER_KEY] = mode
+            else
+                @warn string(
+                    "CodeBlocks: invalid `line_counter` value `", value,
+                    "` in `@codeblocks` block in ", Documenter.locrepr(doc, page, lines),
+                    "; expected :restart, :continue, or :named.",
+                )
+            end
+        else
+            @warn string(
+                "CodeBlocks: unknown `@codeblocks` option `", key, "` in ",
+                Documenter.locrepr(doc, page, lines), ".",
+            )
+        end
+    end
+    node.element = Documenter.MetaNode(x, settings)
+    return
+end
+
+# ---------------------------------------------------------------------------
+# Positional per-block metadata scan
+# ---------------------------------------------------------------------------
+#
+# Walk each page's AST in document order, carrying the meta state — the
+# resolution module (`@meta CurrentModule`) and the line-counter mode
+# (`@codeblocks line_counter`) — and record, per code block, the state AT ITS
+# POSITION. This mirrors how Documenter itself applies meta positionally
+# (cross_references.jl re-walks pages merging each MetaNode in order, and
+# overrides CurrentModule with the docstring's own module inside docstrings).
+# The post-render step can then give every block the same resolution `@ref`
+# would use, and the page-local line-counter mode.
+#
+# The scan also records the crc32c of `jldoctest`-fenced block sources:
+# Documenter's `doctest_replace!` (Populate, order 5.0) rewrites the fence to
+# julia/julia-repl, so this must run after ExpandTemplates (2.0, docstrings and
+# `@repl`/`@example` expanded) but before Populate (5.0), while the fence still
+# exists. That lets the post-render step apply the script-style `# output`
+# split only to real doctests — matching Documenter's fence-first rule.
+abstract type ScanStep <: DocumentPipeline end
+
+Selectors.order(::Type{ScanStep}) = 4.5   # after ExpandTemplates (2.0), before Populate (5.0)
+
+function Selectors.runner(::Type{ScanStep}, doc::Documenter.Document)
     plugin = Documenter.getplugin(doc, CodeBlocks)
+    # Every page starts from the global defaults: `makedocs(meta = …)` seeds
+    # each page's meta (like Documenter's expanders), and the plugin's
+    # `line_counter` option is the site-wide default — both overridden
+    # positionally by the page's own `@meta`/`@codeblocks` blocks.
+    init = BlockMeta(get(doc.user.meta, :CurrentModule, Main), plugin.line_counter)
     for page in values(doc.blueprint.pages)
-        scan_jldoctests!(plugin.jldoctests, page.mdast)
+        scan_page!(plugin, page_key(doc, page), page.mdast, init)
     end
     return
 end
 
-function scan_jldoctests!(set::Set{UInt32}, node)
+# The block kind, matching which post-render pass will consume the block:
+# `:block` (language-julia), `:repl` (language-julia-repl), or `nothing`
+# (a language the plugin does not process). A `jldoctest` fence renders as
+# julia-repl iff it contains a `julia> ` prompt — Documenter's own rule
+# (doctests.jl), mirrored so the queues line up with the rendered HTML.
+function _block_kind(el)
+    langs = split(el.info; limit = 2)   # empty for a bare ``` fence
+    lang = isempty(langs) ? "" : langs[1]
+    lang == "julia" && return :block
+    lang == "julia-repl" && return :repl
+    startswith(lang, "jldoctest") &&
+        return occursin(r"^julia> "m, el.code) ? :repl : :block
+    return nothing
+end
+
+function _record_blockmeta!(plugin, pagekey, kind, hash, state)
+    pagedict = get!(Dict{Tuple{Symbol, UInt32}, Vector{BlockMeta}}, plugin.blockmeta, pagekey)
+    push!(get!(Vector{BlockMeta}, pagedict, (kind, hash)), state)
+    return
+end
+
+# The block's series name for `line_counter = :named`: the second token of the
+# fence info string (`jldoctest name`, `@example name`, `@repl name`, or a
+# plain ```` ```julia name ```` — the writer renders only the first token, so
+# the name never shows up in the output). Token syntax `[^\s;]+` matches
+# Documenter's own name parsing; `nothing` for an unnamed block.
+function _fence_name(info)
+    m = match(r"^\s*[^\s;]+\s+([^\s;]+)", info)
+    return m === nothing ? nothing : String(m.captures[1])
+end
+
+# Sequential fold over the tree: returns the (possibly updated) meta state so
+# a MetaNode affects everything after it, while sub-scopes (docstrings, @eval
+# results) cannot leak state back out.
+function scan_page!(plugin, pagekey, node, state)
     el = node.element
-    if el isa Documenter.MarkdownAST.CodeBlock && startswith(el.info, "jldoctest")
-        push!(set, crc32c(el.code))
-    elseif el isa Documenter.DocsNode
-        # Docstring content lives in a side tree, not the node's own children.
-        for md in el.mdasts
-            scan_jldoctests!(set, md)
+    if el isa Documenter.MetaNode
+        # Both `@meta` snapshots and our `@codeblocks` nodes land here.
+        state = BlockMeta(
+            get(el.dict, :CurrentModule, state.mod),
+            get(el.dict, _LINE_COUNTER_KEY, state.line_counter),
+        )
+    elseif el isa Documenter.MarkdownAST.CodeBlock
+        kind = _block_kind(el)
+        if kind !== nothing
+            startswith(el.info, "jldoctest") && push!(plugin.jldoctests, crc32c(el.code))
+            meta = BlockMeta(state.mod, state.line_counter, _fence_name(el.info))
+            _record_blockmeta!(plugin, pagekey, kind, crc32c(el.code), meta)
         end
+    elseif el isa Documenter.MultiCodeBlock
+        # An executed `@repl` block: the segments are CodeBlock children —
+        # julia-repl inputs (prompt included, matching the rendered source)
+        # and documenter-ansi outputs. Key it by the first input; a multiblock
+        # without one is left untouched by the post-render pass, so it is not
+        # recorded here either. The series name lives on the original fence
+        # (`@repl name`), retained in `el.codeblock`. Do NOT descend: the
+        # segments render as one block, not as individual julia-repl blocks.
+        for child in node.children
+            c = child.element
+            if c isa Documenter.MarkdownAST.CodeBlock && startswith(c.info, "julia-repl")
+                meta = BlockMeta(state.mod, state.line_counter, _fence_name(el.codeblock.info))
+                _record_blockmeta!(plugin, pagekey, :multi, crc32c(c.code), meta)
+                break
+            end
+        end
+        return state
+    elseif el isa Documenter.MultiOutput
+        # An executed `@example` block: the rendered input is a plain-fence
+        # CodeBlock child, so the series name (`@example name`) lives on the
+        # original fence retained in `el.codeblock`. Other children are output
+        # elements — recursed generically, since rendered markdown output can
+        # itself embed code blocks (those carry no series name).
+        name = _fence_name(el.codeblock.info)
+        for child in node.children
+            c = child.element
+            if c isa Documenter.MarkdownAST.CodeBlock && (kind = _block_kind(c)) !== nothing
+                meta = BlockMeta(state.mod, state.line_counter, name)
+                _record_blockmeta!(plugin, pagekey, kind, crc32c(c.code), meta)
+            else
+                scan_page!(plugin, pagekey, child, state)
+            end
+        end
+        return state
+    elseif el isa Documenter.DocsNode
+        # A docstring is its own page: blocks in it resolve in the docstring's
+        # own module and always number from 1 (its content lives in side
+        # trees, not the node's children).
+        for (md, meta) in zip(el.mdasts, el.metas)
+            scan_page!(plugin, pagekey, md, BlockMeta(get(meta, :module, state.mod), :restart))
+        end
+        return state
+    elseif el isa Documenter.EvalNode
+        # Rendered `@eval` output; its meta (if any) stays local like
+        # Documenter's own walkers, which never descend into it.
+        el.result === nothing || scan_page!(plugin, pagekey, el.result, state)
+        return state
     end
     for child in node.children
-        scan_jldoctests!(set, child)
+        state = scan_page!(plugin, pagekey, child, state)
     end
-    return
+    return state
+end
+
+# The recorded meta for the next occurrence of this block on the page, in
+# document order, or `nothing` when the scan did not see it (fall back to the
+# page-final state — the pre-scan behavior).
+function _consume_blockmeta!(plugin, doc, page, kind, source)
+    page === nothing && return nothing
+    pagedict = get(plugin.blockmeta, page_key(doc, page), nothing)
+    pagedict === nothing && return nothing
+    q = get(pagedict, (kind, crc32c(source)), nothing)
+    (q === nothing || isempty(q)) && return nothing
+    return popfirst!(q)
 end
 
 # Matches a Julia code block emitted by Documenter's HTML writer. The ` hljs`
@@ -163,52 +339,92 @@ function _enclosing_docstring_ids(html, offset)
     return ids
 end
 
+# The recovered source of the first julia-repl input of a MultiCodeBlock
+# <pre>, or `nothing` when there is none (not an `@repl` block — some other
+# language's multiblock, left untouched). Doubles as the block's scan key.
+function _first_repl_source(inner)
+    for m in eachmatch(MULTIREPL_SEG_RE, inner)
+        m.captures[1] !== nothing && startswith(m.captures[1], "language-julia-repl") &&
+            return block_source(m.captures[2])
+    end
+    return nothing
+end
+
 function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
     seen = Dict{String, Int}()
     # Unique reference targets used on this page (href => target info), collected
     # by the resolver while blocks are processed; becomes the page's hidden
     # tooltip payload (doxygen-style, deduplicated per page).
     tips = Dict{String, Any}()
-    # Manual scan (not `replace`) so each match can see its context: a block
-    # directly after `<section><div>` is a docstring's signature header, and a
-    # block inside a docstring suppresses self references.
+    # One pass over all three block shapes in document order (their <pre> forms
+    # are mutually exclusive, so the matches cannot overlap) — the running line
+    # counter for `line_counter = :continue` must see the page's blocks in
+    # order regardless of kind. Manual emission (not `replace`) so each match
+    # can see its context: a block directly after `<section><div>` is a
+    # docstring's signature header, and a block inside a docstring suppresses
+    # self references.
+    matches = sort!(
+        vcat(
+            [(m, :block) for m in eachmatch(BLOCK_RE, html)],
+            [(m, :repl) for m in eachmatch(REPL_RE, html)],
+            [(m, :multi) for m in eachmatch(MULTIREPL_RE, html)],
+        ); by = t -> t[1].offset,
+    )
     io = IOBuffer()
     pos = 1
-    for m in eachmatch(BLOCK_RE, html)
+    counter = 0   # last displayed line number of the page's processed blocks
+    named = Dict{String, Int}()   # per-series counters for `line_counter = :named`
+    for (m, kind) in matches
         print(io, SubString(html, pos, prevind(html, m.offset)))
-        content = String(m.captures[2])
+        pos = m.offset + ncodeunits(m.match)
         self_ids = _enclosing_docstring_ids(html, m.offset)
-        if _docstring_sig_prefix(html, m.offset)
-            print(io, transform_signature_block(content, plugin, doc, page, tips, self_ids))
+        if kind === :multi
+            source = _first_repl_source(m.captures[1])
+            if source === nothing   # not an `@repl` block: leave untouched
+                print(io, m.match)
+                continue
+            end
         else
-            print(io, transform_block(content, plugin, doc, page, seen, tips, self_ids))
+            source = block_source(m.captures[2])
         end
-        pos = m.offset + ncodeunits(m.match)
-    end
-    print(io, SubString(html, pos))
-    html = String(take!(io))
-    # REPL transcripts are highlighted too (so runtime hljs isn't needed at all).
-    io = IOBuffer()
-    pos = 1
-    for m in eachmatch(REPL_RE, html)
-        print(io, SubString(html, pos, prevind(html, m.offset)))
-        self_ids = _enclosing_docstring_ids(html, m.offset)
-        print(io, transform_repl_block(String(m.captures[2]), plugin, doc, page, seen, tips, self_ids))
-        pos = m.offset + ncodeunits(m.match)
-    end
-    print(io, SubString(html, pos))
-    html = String(take!(io))
-    # `@repl` blocks (MultiCodeBlock pres) are rebuilt into the same transcript
-    # form. A multiblock with no julia-repl input is not an `@repl` block and is
-    # left untouched (transform returns nothing).
-    io = IOBuffer()
-    pos = 1
-    for m in eachmatch(MULTIREPL_RE, html)
-        print(io, SubString(html, pos, prevind(html, m.offset)))
-        self_ids = _enclosing_docstring_ids(html, m.offset)
-        new = transform_multirepl_block(m.captures[1], plugin, doc, page, seen, tips, self_ids)
-        print(io, new === nothing ? m.match : new)
-        pos = m.offset + ncodeunits(m.match)
+        meta = _consume_blockmeta!(plugin, doc, page, kind, source)
+        mod = meta === nothing ? nothing : meta.mod
+        if kind === :block && _docstring_sig_prefix(html, m.offset)
+            # Signature headers have no gutter: no counter interaction.
+            print(io, transform_signature_block(source, plugin, doc, page, tips, self_ids, mod))
+            continue
+        end
+        # A block inside a docstring is its own page: it numbers from 1 and
+        # does not advance the page counter (the scan records docstring blocks
+        # with :restart, so `meta` agrees). In :named mode each named
+        # series has its own counter; unnamed blocks restart.
+        docstring = self_ids !== nothing
+        start = if meta === nothing || docstring
+            1
+        elseif meta.line_counter === :continue
+            counter + 1
+        elseif meta.line_counter === :named && meta.name !== nothing
+            get(named, meta.name, 0) + 1
+        else
+            1
+        end
+        block_html, nlines = if kind === :block
+            transform_block(source, plugin, doc, page, seen, tips, self_ids, mod, start)
+        elseif kind === :repl
+            transform_repl_block(source, plugin, doc, page, seen, tips, self_ids, mod, start)
+        else
+            transform_multirepl_block(m.captures[1], plugin, doc, page, seen, tips, self_ids, mod, start)
+        end
+        # Every processed page block advances the page counter — restart
+        # blocks too, so a later `continue` block picks up from the last
+        # number the reader saw — gutter or not (`min_lines` gaps would break
+        # continuity). A named block likewise advances its series counter.
+        if !docstring
+            counter = start + nlines - 1
+            meta !== nothing && meta.name !== nothing &&
+                (named[meta.name] = start + nlines - 1)
+        end
+        print(io, block_html)
     end
     print(io, SubString(html, pos))
     html = String(take!(io))
@@ -225,9 +441,8 @@ end
 # (`binding = true`), so parameter names bind and stay plain while type
 # positions and the `-> T` return type link; the documented name itself is a
 # (candidate-aware) self reference and never links.
-function transform_signature_block(content, plugin, doc, page, tips = nothing, self_ids = nothing)
-    source = block_source(content)
-    resolve = make_resolver(plugin, doc, page, tips, self_ids)
+function transform_signature_block(source, plugin, doc, page, tips = nothing, self_ids = nothing, mod = nothing)
+    resolve = make_resolver(plugin, doc, page, tips, self_ids, mod)
     return string(
         "<pre><code class=\"", CODE_CLASSES, "\">",
         highlight_julia_html(source; resolve = resolve, binding = true),
@@ -235,37 +450,39 @@ function transform_signature_block(content, plugin, doc, page, tips = nothing, s
     )
 end
 
-function transform_block(content, plugin, doc, page, seen, tips, self_ids = nothing)
-    source = block_source(content)
+# The block transforms take the positional per-block meta — `mod`, the module
+# references resolve in, and `start`, the first displayed line number
+# (`> 1` under `line_counter = :continue`) — and return `(html, nlines)` so
+# the caller can advance the page's running line counter.
+function transform_block(source, plugin, doc, page, seen, tips, self_ids = nothing, mod = nothing, start = 1)
     id = block_id(source, seen)
 
     # Only a real `jldoctest` block gets the script-style `# output` split.
     jldoctest = crc32c(source) in plugin.jldoctests
     line_htmls = highlight_julia_lines(
         source, plugin, doc, page;
-        jldoctest = jldoctest, tips = tips, self_ids = self_ids,
+        jldoctest = jldoctest, tips = tips, self_ids = self_ids, mod = mod,
     )
 
     if !plugin.line_numbers || length(line_htmls) < plugin.min_lines
         # No gutter (line_numbers disabled, or a one-liner), but keep the
         # highlighted content and the block id + permalink.
-        return plain_pre(id, CODE_CLASSES, join(line_htmls, "\n"))
+        return plain_pre(id, CODE_CLASSES, join(line_htmls, "\n")), length(line_htmls)
     end
-    return numbered_pre(id, CODE_CLASSES, line_htmls)
+    return numbered_pre(id, CODE_CLASSES, line_htmls, start), length(line_htmls)
 end
 
 # REPL transcripts (julia-repl blocks and REPL-style jldoctests) are numbered
 # too by default — linkable lines are just as useful in a transcript — but it
 # has its own toggle (`repl_line_numbers`) on top of `line_numbers`.
-function transform_repl_block(content, plugin, doc, page, seen, tips, self_ids = nothing)
-    source = block_source(content)
+function transform_repl_block(source, plugin, doc, page, seen, tips, self_ids = nothing, mod = nothing, start = 1)
     id = block_id(source, seen)
-    html = highlight_repl_html(source; resolve = make_resolver(plugin, doc, page, tips, self_ids))
-    if plugin.line_numbers && plugin.repl_line_numbers
-        line_htmls = split_highlighted(html)
-        length(line_htmls) >= plugin.min_lines && return numbered_pre(id, CODE_CLASSES, line_htmls)
+    html = highlight_repl_html(source; resolve = make_resolver(plugin, doc, page, tips, self_ids, mod))
+    line_htmls = split_highlighted(html)
+    if plugin.line_numbers && plugin.repl_line_numbers && length(line_htmls) >= plugin.min_lines
+        return numbered_pre(id, CODE_CLASSES, line_htmls, start), length(line_htmls)
     end
-    return plain_pre(id, CODE_CLASSES, html)
+    return plain_pre(id, CODE_CLASSES, html), length(line_htmls)
 end
 
 # Rebuild an `@repl` MultiCodeBlock <pre> as one transcript block: input
@@ -274,13 +491,12 @@ end
 # segments keep their inner HTML verbatim, re-wrapped in `<span class="ansi">`
 # so the themes' `.ansi span.sgrNN` color rules still apply after the original
 # `<code class="… ansi">` wrapper is gone; the <br/> Documenter puts between
-# iterations becomes the transcript's blank line. Returns nothing when no
-# segment is julia-repl input (some other language's multiblock).
-function transform_multirepl_block(inner, plugin, doc, page, seen, tips, self_ids = nothing)
+# iterations becomes the transcript's blank line. The caller has already
+# checked for a julia-repl input (`_first_repl_source`).
+function transform_multirepl_block(inner, plugin, doc, page, seen, tips, self_ids = nothing, mod = nothing, start = 1)
     segments = collect(eachmatch(MULTIREPL_SEG_RE, inner))
     isrepl(m) = m.captures[1] !== nothing && startswith(m.captures[1], "language-julia-repl")
-    any(isrepl, segments) || return nothing
-    resolve = make_resolver(plugin, doc, page, tips, self_ids)
+    resolve = make_resolver(plugin, doc, page, tips, self_ids, mod)
     htmls = String[]
     sources = String[]
     for m in segments
@@ -299,9 +515,9 @@ function transform_multirepl_block(inner, plugin, doc, page, seen, tips, self_id
     end
     id = block_id(join(sources, "\n"), seen)
     html = join(htmls, "\n")
-    if plugin.line_numbers && plugin.repl_line_numbers
-        line_htmls = split_highlighted(html)
-        length(line_htmls) >= plugin.min_lines && return numbered_pre(id, CODE_CLASSES, line_htmls)
+    line_htmls = split_highlighted(html)
+    if plugin.line_numbers && plugin.repl_line_numbers && length(line_htmls) >= plugin.min_lines
+        return numbered_pre(id, CODE_CLASSES, line_htmls, start), length(line_htmls)
     end
-    return plain_pre(id, CODE_CLASSES, html)
+    return plain_pre(id, CODE_CLASSES, html), length(line_htmls)
 end

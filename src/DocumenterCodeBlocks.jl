@@ -8,8 +8,19 @@ export CodeBlocks
 # Plugin configuration
 # ---------------------------------------------------------------------------
 
+# The meta state a code block sees at its position on the page: the module
+# reference resolution happens in, the line-numbering mode, and the block's
+# series name (`@example name`, `@repl name`, `jldoctest name`, or the second
+# fence token of a plain block) for `line_counter = :named`.
+struct BlockMeta
+    mod::Module
+    line_counter::Symbol   # :restart | :continue | :named
+    name::Union{String, Nothing}
+end
+BlockMeta(mod::Module, line_counter::Symbol) = BlockMeta(mod, line_counter, nothing)
+
 """
-    CodeBlocks(; languages=["julia"], reference_links=true, popups=true, line_numbers=true, repl_line_numbers=true, min_lines=1)
+    CodeBlocks(; languages=["julia"], reference_links=true, popups=true, line_numbers=true, repl_line_numbers=true, min_lines=1, line_counter=:restart)
 
 Documenter plugin that enhances code blocks with syntax highlighting, line
 numbers / linkable lines, and reference links — all in a single pass. Julia is
@@ -31,6 +42,31 @@ blocks), so no node/`prerender` is needed.
   blocks and REPL-style `jldoctest`s). Requires `line_numbers=true`.
 - `min_lines`: blocks with fewer lines get an id + permalink but no gutter
   (the default numbers every block, including one-liners).
+- `line_counter`: the default line-counter mode for every page — `:restart`,
+  `:continue`, or `:named` (see the `@codeblocks` block below, which overrides
+  it per page, positionally).
+
+Reference resolution follows the page's `@meta CurrentModule` **positionally**,
+exactly like `@ref`: the module in effect at a block's position applies to that
+block, and code blocks inside a docstring resolve in the docstring's own module.
+
+Pages can configure the plugin locally with an `@codeblocks` block:
+
+````markdown
+```@codeblocks
+line_counter = :continue
+```
+````
+
+- `line_counter`: `:restart` (default) numbers every block from 1;
+  `:continue` carries one running line counter across the page's code blocks
+  (`julia`, `julia-repl`, executed `@repl`), tutorial-style; `:named` keeps
+  one counter **per named series** — blocks sharing a name (`@example name`,
+  `@repl name`, `jldoctest name`, or a second fence token like
+  ` ```julia name `) continue each other, while unnamed blocks restart. Like
+  `@meta`, the setting applies from its position to the end of the page (or
+  the next `@codeblocks` block). Blocks inside docstrings are their own page:
+  they always start at 1 and do not advance any counter.
 
 The first code block of a docstring — the signature header — gets no line
 numbers or permalink (headers aren't always valid Julia, e.g. `f(x[, y])`),
@@ -55,16 +91,38 @@ struct CodeBlocks <: Documenter.Plugin
     line_numbers::Bool
     repl_line_numbers::Bool
     min_lines::Int
+    line_counter::Symbol   # default line-counter mode: :restart | :continue | :named
     # Internal: crc32c hashes of the sources of `jldoctest`-fenced blocks, collected
     # before RenderDocument rewrites the fence to julia/julia-repl. Used to apply the
     # script-style `# output` split only to real doctests (like Documenter does).
     jldoctests::Set{UInt32}
+    # Internal: per-block metadata collected positionally from each page's AST
+    # (ScanStep): page key → (block kind, source hash) → FIFO queue of one entry
+    # per occurrence, in document order. Gives every block the meta state AT ITS
+    # POSITION — the resolution module (`@meta CurrentModule`, or the docstring's
+    # own module) and the line-counter mode (`@codeblocks line_counter`) — the
+    # way Documenter itself applies meta positionally for `@ref`/`@docs`.
+    blockmeta::Dict{String, Dict{Tuple{Symbol, UInt32}, Vector{BlockMeta}}}
     # Internal: dedup keys of already-emitted "CodeBlocks: " build warnings, so
     # each extraction problem is reported once per build (not per page/reference).
     warned::Set{String}
 end
-function CodeBlocks(; languages = ["julia"], reference_links = true, popups = true, line_numbers = true, repl_line_numbers = true, min_lines = 1)
-    return CodeBlocks(languages, reference_links, popups, line_numbers, repl_line_numbers, min_lines, Set{UInt32}(), Set{String}())
+function CodeBlocks(;
+        languages = ["julia"], reference_links = true, popups = true, line_numbers = true,
+        repl_line_numbers = true, min_lines = 1, line_counter = :restart,
+    )
+    line_counter isa Symbol && line_counter in (:restart, :continue, :named) || throw(
+        ArgumentError(
+            "CodeBlocks: invalid `line_counter` value `$(repr(line_counter))`; " *
+                "expected :restart, :continue, or :named",
+        ),
+    )
+    return CodeBlocks(
+        languages, reference_links, popups, line_numbers, repl_line_numbers, min_lines,
+        line_counter,
+        Set{UInt32}(), Dict{String, Dict{Tuple{Symbol, UInt32}, Vector{BlockMeta}}}(),
+        Set{String}(),
+    )
 end
 
 include("split.jl")

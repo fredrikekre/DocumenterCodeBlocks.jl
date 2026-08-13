@@ -260,6 +260,67 @@ function check(name, ok, detail) {
   }
   await page3.close();
 
+  // ---- continued numbering (data-ln-start offsets), when present ---------
+  // Only pages using `@codeblocks line_counter = :continue` have offset
+  // blocks; on other pages this section reports itself skipped.
+  const contBlocks = await page.evaluate(() =>
+    Array.from(document.querySelectorAll(".code-lines[data-ln-start]")).map((w) => {
+      const pre = w.closest("pre");
+      // (getComputedStyle content returns the literal `counter(line)` —
+      // browsers don't resolve counters there — so check the inline
+      // counter-reset the digits render from instead.)
+      const m = /line\s+(\d+)/.exec(w.style.counterReset || "");
+      return {
+        id: pre.id,
+        start: parseInt(w.dataset.lnStart, 10),
+        lines: w.querySelectorAll(".line").length,
+        reset: m ? parseInt(m[1], 10) : null,
+      };
+    })
+  );
+  if (contBlocks.length === 0) {
+    check("continued numbering (skipped: no data-ln-start blocks on page)", true);
+  } else {
+    // The CSS counter offset matches the declared start: the first gutter
+    // digit renders as `reset + 1` == start.
+    check(
+      "continued blocks carry a matching counter offset",
+      contBlocks.every((b) => b.reset === b.start - 1),
+      JSON.stringify(contBlocks.map((b) => [b.start, b.reset]))
+    );
+    // Gutter click on a continued block puts the DISPLAYED number in the hash.
+    const cb = contBlocks[0];
+    await page.evaluate(() => history.replaceState(null, "", location.pathname));
+    const cell = page.locator(`#${cb.id} .line .line-num`).first();
+    await cell.click();
+    const hash1 = await page.evaluate(() => location.hash);
+    check(
+      "gutter click uses displayed numbers in the hash",
+      hash1 === `#${cb.id}-L${cb.start}`,
+      `${hash1} (expected #${cb.id}-L${cb.start})`
+    );
+    // Hash restore maps the displayed number back to the right child line.
+    const lastDisplayed = cb.start + cb.lines - 1;
+    const hl = await page.evaluate(
+      ([id, disp]) => {
+        history.replaceState(null, "", `#${id}-L${disp}`);
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+        const lines = document.querySelectorAll(`#${id} .line`);
+        return {
+          hlIndex: Array.from(lines).findIndex((l) => l.classList.contains("hl")),
+          hlCount: document.querySelectorAll(`#${id} .line.hl`).length,
+        };
+      },
+      [cb.id, lastDisplayed]
+    );
+    check(
+      "hash restore highlights the offset-mapped line",
+      hl.hlCount === 1 && hl.hlIndex === cb.lines - 1,
+      JSON.stringify(hl)
+    );
+    await page.evaluate(() => history.replaceState(null, "", location.pathname));
+  }
+
   // ---- theme sweep: gutter bg must equal pre bg in all six themes ----
   const themes = ["documenter-light", "documenter-dark", "catppuccin-latte",
     "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"];

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.0] - 2026-08-12
+
+### Added
+ - New `@codeblocks` block for page-local plugin options, applied
+   positionally like `@meta`. The first option is `line_counter`:
+   `:continue` carries one running line counter across the page's code
+   blocks (tutorial style), and `:named` keeps one counter per named series
+   (`@example name`, `@repl name`, `jldoctest name`, …) with unnamed blocks
+   restarting — instead of the default `:restart` numbering from 1. The
+   site-wide default mode is configurable with `CodeBlocks(line_counter = …)`.
+   Line permalinks use the displayed numbers. Blocks inside docstrings are
+   their own page: they always start at 1 and do not advance any counter.
+   ([#14])
+ - Reference resolution now follows `@meta CurrentModule` **positionally**,
+   exactly like `@ref`: a mid-page module switch applies from its position
+   on, and code blocks inside a docstring resolve in the docstring's own
+   module. Previously the page-final state applied everywhere. ([#14])
+
 ## [v1.2.0] - 2026-08-12
 
 ### Added
@@ -22,7 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    now candidate-aware: a reference is left unlinked whenever the enclosing
    docstring is among its candidate targets, not only when it is the primary
    target. ([#11], [#13])
-
 ### Changed
  - Reference links on qualified names (`Foo.bar(...)`, `Foo.@bar`,
    `x::Foo.Bar`) now wrap only the name; the module qualifier and dot stay
@@ -72,6 +89,7 @@ See [README.md](README.md) and the documentation for details.
 [v1.0.1]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.0.1
 [v1.1.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.1.0
 [v1.2.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.2.0
+[v1.3.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.3.0
 [#3]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/3
 [#5]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/5
 [#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6
@@ -81,3 +99,4 @@ See [README.md](README.md) and the documentation for details.
 [#11]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/11
 [#12]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/12
 [#13]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/13
+[#14]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/14

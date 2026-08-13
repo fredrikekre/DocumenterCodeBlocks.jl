@@ -354,3 +354,49 @@ Return `text` unchanged. A documented **string macro**: the `w` prefix of a
 macro w_str(s)
     return s
 end
+
+# ---------------------------------------------------------------------------
+# Positional-meta testbed (continued.md): a second module for `CurrentModule`
+# switching, and a function documented on the continued page itself.
+# ---------------------------------------------------------------------------
+
+module DemoInner
+
+    """
+        inner_fn(x)
+
+    Return `x` doubled. Documented inside the submodule `DemoInner`: unqualified
+    references resolve here only where `CurrentModule = DocumenterCodeBlocks.DemoInner`
+    is in effect — positionally, exactly like `@ref`. This docstring's example
+    block resolves in `DemoInner` regardless of the page's `CurrentModule`:
+
+    ```julia
+    y = inner_helper(inner_fn(2))
+    ```
+    """
+    inner_fn(x) = 2x
+
+    """
+        inner_helper(x)
+
+    Return `x` unchanged. A second documented name in `DemoInner`, referenced
+    unqualified from `inner_fn`'s docstring example.
+    """
+    inner_helper(x) = x
+
+end # module DemoInner
+
+"""
+    stepwise(v)
+
+Return `v`. Documented (with `@docs`) on the *continued* page to verify that
+docstring code blocks are their own page: they restart their line numbers at 1
+and do not advance the page's running counter — while the docstring's example
+still gets links (`add_numbers` below):
+
+```julia
+a = stepwise([1, 2])
+b = add_numbers(a[1], a[2])
+```
+"""
+stepwise(v) = v

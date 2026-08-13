@@ -7,7 +7,11 @@ CurrentModule = DocumenterCodeBlocks
 Identifiers in code blocks that name a **documented object** become links to
 the docstring — the code-block equivalent of Documenter's `@ref`. Resolution
 uses the same machinery and the page's `CurrentModule` meta, so a code block
-and an `@ref` link always agree on the target.
+and an `@ref` link always agree on the target. `CurrentModule` applies
+**positionally**, exactly as it does for `@ref`: a page can switch modules
+with a second `@meta` block halfway down, and each code block resolves in the
+module in effect at its own position. Code blocks inside a docstring resolve
+in the docstring's own module, wherever the docstring is spliced.
 
 ```julia
 function demo(m::MyType)
