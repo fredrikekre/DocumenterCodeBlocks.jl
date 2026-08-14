@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.1] - Unreleased
+
+### Fixed
+ - Tooltip briefs no longer truncate the docstring's first sentence at
+   mid-sentence periods. A `.`/`!`/`?` now only ends the sentence when the
+   next word does not start with a lowercase letter (so `meas. outputs`,
+   `sort! the vector` and `args... to` continue) and when it does not
+   complete a known abbreviation such as `e.g.`, `i.e.`, `etc.` or `a.k.a.`.
+   Punctuation inside inline code is never a sentence end (`Base.sort!`
+   stays intact), while a code span starting the next word always is
+   ("Sort `v` in place. `alg` controls …" cuts before `alg`). ([#16])
+
 ## [v1.3.0] - 2026-08-13
 
 ### Added
@@ -90,6 +102,7 @@ See [README.md](README.md) and the documentation for details.
 [v1.1.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.1.0
 [v1.2.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.2.0
 [v1.3.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.3.0
+[v1.3.1]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.3.1
 [#3]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/3
 [#5]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/5
 [#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6
@@ -100,3 +113,4 @@ See [README.md](README.md) and the documentation for details.
 [#12]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/12
 [#13]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/13
 [#14]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/14
+[#16]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/16
