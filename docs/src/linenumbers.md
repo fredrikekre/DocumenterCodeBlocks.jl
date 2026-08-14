@@ -9,13 +9,17 @@ style. Try it on the block below:
 
 - **click** a line number to select that line,
 - **shift-click** (or **drag** along the gutter) to select a range,
-- click the **link button** (top right of the block) to select the whole block,
+- click the **link button** (top right of the block) to **copy the link** —
+  to the current line selection if you have one in that block, else to the
+  whole block; the icon flashes a checkmark to confirm,
 - click anywhere outside the block to **deselect**.
 
-The selection is reflected in the URL fragment (`#c-1a2b3c4d-L3-L7`), so you
-can copy the address and link a reader to exactly these lines. Block ids are
-content-addressed: they only change when the code itself changes, not when
-the block moves around on the page.
+The selection is reflected in the URL fragment (`#c-1a2b3c4d-L3-L7`), so a
+copied link takes a reader to exactly these lines. The link button is a real
+anchor, so the browser's usual affordances (right-click → *Copy Link*,
+middle-click → new tab) work too. Block ids are content-addressed: they only
+change when the code itself changes, not when the block moves around on the
+page.
 
 ```julia
 struct Point{T <: Real}

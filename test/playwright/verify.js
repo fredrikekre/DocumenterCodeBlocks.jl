@@ -213,6 +213,88 @@ function check(name, ok, detail) {
   }, ID);
   check("pre.innerText has no gutter digits / doubled newlines", copy);
 
+  // ---- permalink button: real anchor, copies block/selection URL (#17) ----
+  // Clipboard content can only be read back in chromium (grantPermissions);
+  // the anchor/hash/feedback checks run everywhere.
+  let canReadClipboard = false;
+  try {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    canReadClipboard = true;
+  } catch (e) {
+    /* firefox/webkit: permission names unsupported */
+  }
+  const readClipboard = () =>
+    canReadClipboard ? page.evaluate(() => navigator.clipboard.readText()) : Promise.resolve(null);
+  const pageURL = URL.replace(/#.*$/, "");
+
+  await reset();
+  const linkEl = await page.evaluate((id) => {
+    const a = document.querySelector("#" + CSS.escape(id) + " .block-link");
+    return a && {
+      isAnchor: a.tagName === "A",
+      href: a.getAttribute("href"),
+      label: a.getAttribute("aria-label"),
+    };
+  }, ID);
+  check(
+    "permalink is a real anchor with the block href",
+    linkEl && linkEl.isAnchor && linkEl.href === "#" + ID,
+    JSON.stringify(linkEl)
+  );
+  check("permalink label says it copies", /copy/i.test(linkEl ? linkEl.label : ""));
+
+  // No selection: click selects + copies the whole-block URL.
+  await page.hover("#" + ID); // reveal the button
+  await page.click("#" + ID + " .block-link");
+  r = await page.evaluate(() => ({
+    hash: location.hash,
+    block: document.querySelectorAll("pre.hl-block").length,
+  }));
+  check("permalink click selects the whole block", r.hash === "#" + ID && r.block === 1, r.hash);
+  // the checkmark appears when the async clipboard write resolves
+  const copiedShown = await page
+    .waitForSelector(".block-link.copied", { timeout: 2000 })
+    .then(() => true)
+    .catch(() => false);
+  check("permalink click shows copied feedback", copiedShown);
+  let clip = await readClipboard();
+  if (clip !== null) {
+    check("clipboard holds the block URL", clip === pageURL + "#" + ID, clip);
+  }
+  await page.waitForTimeout(1700);
+  r = await page.evaluate(() => !!document.querySelector(".block-link.copied"));
+  check("copied feedback resets", r === false);
+
+  // With lines selected in the block: click preserves + copies the selection.
+  pos = await gutterPos(2);
+  await page.mouse.click(pos.x, pos.y);
+  await page.click("#" + ID + " .block-link");
+  r = await state();
+  check("permalink keeps the line selection", r.hl === 1 && /-L2$/.test(r.hash), r.hash);
+  clip = await readClipboard();
+  if (clip !== null) {
+    check("clipboard holds the selection URL", clip === pageURL + r.hash, clip);
+  }
+
+  // A selection in ANOTHER block is not this block's: copy the whole block.
+  const elsewhere = await page.evaluate((id) => {
+    const p = Array.from(document.querySelectorAll("code.line-numbers")).find(
+      (c) => c.parentElement.id !== id && c.querySelectorAll(".line").length >= 2
+    );
+    p.parentElement.scrollIntoView({ block: "center" });
+    const r0 = p.querySelectorAll(".line-num")[0].getBoundingClientRect();
+    return { x: r0.left + r0.width / 2, y: r0.top + r0.height / 2 };
+  }, ID);
+  await page.mouse.click(elsewhere.x, elsewhere.y); // select a line elsewhere
+  await page.click("#" + ID + " .block-link");
+  r = await state();
+  check(
+    "selection elsewhere: permalink retargets whole block",
+    r.hash === "#" + ID,
+    r.hash
+  );
+  await reset();
+
   // ---- hash restore on fresh load ----
   const restoreHash = `#${ID}-L3-L9`; // fixed range: the restore checks expect 7 lines
   const page2 = await browser.newPage({ viewport: { width: 1400, height: 950 } });
