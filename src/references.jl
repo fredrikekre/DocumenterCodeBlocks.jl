@@ -294,7 +294,7 @@ function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing)
                 if el isa Documenter.MarkdownAST.CodeBlock
                     first_block && (sig = String(strip(el.code)))
                 elseif el isa Documenter.MarkdownAST.Paragraph && brief === nothing
-                    brief, clipped = _first_sentence(_plain_text(child))
+                    brief, clipped = _first_sentence(_plain_text(child)...)
                 end
                 first_block = false
             end
@@ -345,29 +345,78 @@ function _synth_signature(object)
     return name
 end
 
-# Flatten a MarkdownAST subtree to its literal text (code spans included as-is).
+# Flatten a MarkdownAST subtree to its literal text (code spans included as-is,
+# their backticks dropped). Also returns the byte ranges the code spans occupy
+# in the flattened text, so sentence detection can tell code from prose.
 function _plain_text(node)
     io = IOBuffer()
-    _plain_text!(io, node)
-    return String(take!(io))
+    code_spans = UnitRange{Int}[]
+    _plain_text!(io, node, code_spans)
+    return String(take!(io)), code_spans
 end
-function _plain_text!(io, node)
+function _plain_text!(io, node, code_spans)
     el = node.element
     el isa Documenter.MarkdownAST.Text && print(io, el.text)
-    el isa Documenter.MarkdownAST.Code && print(io, el.code)
+    if el isa Documenter.MarkdownAST.Code
+        start = position(io) + 1
+        print(io, el.code)
+        push!(code_spans, start:position(io))
+    end
     for child in node.children
-        _plain_text!(io, child)
+        _plain_text!(io, child, code_spans)
     end
     return
 end
 
+# Abbreviations whose trailing `.` is not a sentence boundary. `meas`/`dist`/
+# `est` are ad-hoc truncations seen in the wild (#16); the rest are standard.
+const _ABBREVIATION_RE = r"(?:\b(?:e\.g|i\.e|etc|vs|cf|resp|approx|ca|viz|incl|meas|dist|est)|\bet\s+al|\bw\.r\.t|\ba\.k\.a|\bs\.t)\.$"i
+
 # First sentence of `text` (capped at 200 chars), whitespace-normalized.
-# Also reports whether the cap truncated mid-sentence (no boundary found in a
-# longer paragraph) — that feeds a docstring-quality warning.
-function _first_sentence(text)
-    m = match(r"^.{1,200}?[.!?](?=\s|$)"s, text)
-    clipped = m === nothing && length(text) > 200
-    s = m === nothing ? first(text, 200) : m.match
+# A sentence ends at `.`/`!`/`?` followed by whitespace or end of text, except
+# that (following Unicode UAX #29 rule SB8, validated against Base/stdlib
+# docstrings) the sentence continues when the next word starts with a lowercase
+# prose letter — abbreviations like `meas. outputs` and bang functions like
+# `sort! the vector` — or when the `.` completes a known abbreviation (`e.g.
+# Native code`). Punctuation inside a code span never ends the sentence
+# (`Base.sort!` stays intact), but a code span *starting* the next word does
+# end it: briefs of the ubiquitous form "Sort `v` in place. `alg` controls …"
+# must cut before `alg` regardless of its case. Also reports whether the cap
+# truncated mid-sentence (no boundary found in a longer paragraph) — that
+# feeds a docstring-quality warning.
+function _first_sentence(text, code_spans = UnitRange{Int}[])
+    incode(i) = any(r -> i in r, code_spans)
+    lastidx = lastindex(text)
+    stop = 0
+    nchars = 0
+    i = firstindex(text)
+    while i <= lastidx && nchars < 200
+        nchars += 1
+        c = text[i]
+        if (c === '.' || c === '!' || c === '?') && !incode(i)
+            k = nextind(text, i)
+            wasspace = k > lastidx || isspace(text[k])
+            while k <= lastidx && isspace(text[k])
+                k = nextind(text, k)
+            end
+            if !wasspace
+                # punctuation embedded in a word (`1.5`, `e.g` in `e.g.`): no boundary
+            elseif k > lastidx
+                stop = i
+                break
+            elseif islowercase(text[k]) && !incode(k)
+                # next word is lowercase prose: the sentence continues
+            elseif c === '.' && occursin(_ABBREVIATION_RE, SubString(text, firstindex(text), i))
+                # known abbreviation: the sentence continues
+            else
+                stop = i
+                break
+            end
+        end
+        i = nextind(text, i)
+    end
+    clipped = stop == 0 && length(text) > 200
+    s = stop == 0 ? first(text, 200) : text[begin:stop]
     s = strip(replace(s, r"\s+" => " "))
     return (isempty(s) ? nothing : String(s)), clipped
 end

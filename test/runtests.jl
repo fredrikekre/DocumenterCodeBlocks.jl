@@ -304,6 +304,39 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         s, clipped = DCB._first_sentence("a "^150)   # 300 chars, no sentence boundary
         @test clipped && length(s) <= 200
         @test DCB._first_sentence("   ") == (nothing, false)
+        # a lowercase next word means the sentence continues (abbreviations,
+        # bang functions, ellipses); uppercase/digit/punctuation ends it (#16)
+        @test DCB._first_sentence("Uses meas. outputs and dist. values for control. Second sentence.") ==
+            ("Uses meas. outputs and dist. values for control.", false)
+        @test DCB._first_sentence("Call sort! on the vector. More.") ==
+            ("Call sort! on the vector.", false)
+        @test DCB._first_sentence("Writes args... to a string. More.") ==
+            ("Writes args... to a string.", false)
+        @test DCB._first_sentence("Returns f(x) ? a : b. More.") ==
+            ("Returns f(x) ? a : b.", false)
+        # known abbreviations don't end the sentence even before a capital
+        @test DCB._first_sentence("Allocated for e.g. Native code. More.") ==
+            ("Allocated for e.g. Native code.", false)
+        @test DCB._first_sentence("Compose functions: i.e. (f o g)(x) means f(g(x)).") ==
+            ("Compose functions: i.e. (f o g)(x) means f(g(x)).", false)
+        @test DCB._first_sentence("Scalar replacement, a.k.a. SROA. More.") ==
+            ("Scalar replacement, a.k.a. SROA.", false)
+        # punctuation inside a code span never ends the sentence; a code span
+        # starting the next word always does, whatever its case
+        @test DCB._first_sentence("Calls Base.sort! internally to sort. More.", [7:16]) ==
+            ("Calls Base.sort! internally to sort.", false)
+        @test DCB._first_sentence("Sort v in place. alg controls the algorithm.", [6:6, 18:20]) ==
+            ("Sort v in place.", false)
+        # end-to-end through _plain_text: code spans in a docstring paragraph
+        para = Documenter.MarkdownAST.@ast Documenter.MarkdownAST.Paragraph() do
+            "Prepare "
+            Documenter.MarkdownAST.Code("estim.x0")
+            " estimate with meas. outputs "
+            Documenter.MarkdownAST.Code("ym")
+            " for the step. Second sentence."
+        end
+        @test DCB._first_sentence(DCB._plain_text(para)...) ==
+            ("Prepare estim.x0 estimate with meas. outputs ym for the step.", false)
     end
 
     @testset "docsite build" begin
