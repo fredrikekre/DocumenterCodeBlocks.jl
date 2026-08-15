@@ -267,8 +267,9 @@ end
 # precede. Nothing further down counts: a docstring section heading renders as
 # a paragraph of its own (Documenter's `recursive_heading_to_bold!`), so
 # requiring adjacency keeps `# Examples` code out. A block that does not lead
-# the docstring must also be example-free: unlabeled or an explicit `julia`
-# fence, and not a doctest (`Documenter.doctest_replace!` has by now relabeled
+# the docstring must also be example-free: unlabeled or a bare `julia` fence
+# (a series name marks example code), and not a doctest
+# (`Documenter.doctest_replace!` has by now relabeled
 # every `jldoctest` fence `julia`/`julia-repl`, so the ScanStep's record of
 # the original fences is what tells them apart). `_docstring_sig_position`
 # recognizes the same two positions in the rendered HTML.

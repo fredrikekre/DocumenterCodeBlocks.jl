@@ -348,7 +348,7 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             include(joinpath(docsite, "make.jl"))
         end
         cb = [String(l.message) for l in logger.logs if startswith(String(l.message), "CodeBlocks: ")]
-        @test length(cb) == 7
+        @test length(cb) == 8
         @test any(contains("`DocumenterCodeBlocks.bar`"), cb)             # no signature block
         @test any(contains("`DocumenterCodeBlocks.baz` has no prose"), cb)
         @test any(contains("`DocumenterCodeBlocks.wordy`"), cb)           # clipped brief
@@ -356,6 +356,7 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         @test any(contains("takes 4 arguments"), cb)                      # arity gap
         @test any(contains("sampled"), cb)        # code block under a heading
         @test any(contains("echoed"), cb)         # doctest after the summary
+        @test any(contains("halved"), cb)         # named fence after the summary
         # A signature block after the summary paragraph is found, not reported.
         @test !any(contains("summarize"), cb)
         other = [String(l.message) for l in logger.logs if !startswith(String(l.message), "CodeBlocks: ")]
@@ -541,6 +542,13 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             @test occursin("class=\"nohighlight hljs line-numbers\"", echoed)
             out = match(r"# output(.{0,80})"s, echoed)
             @test out !== nothing && !occursin("julia-", out.captures[1])
+            # A NAMED fence in the signature position joins a numbering
+            # series: example code (the AST side sees the name on the fence,
+            # the HTML side the ScanStep's BlockMeta), so it too keeps its
+            # gutter and permalink id (and warning above).
+            halved = docstring_details(index, "DocumenterCodeBlocks.halved")
+            @test occursin("<pre id=\"c-", halved)
+            @test occursin("class=\"nohighlight hljs line-numbers\"", halved)
         end
 
         @testset "self references in docstrings" begin

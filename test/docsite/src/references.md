@@ -88,6 +88,7 @@ so its tooltip signature is synthesized.
 u = summarize(2)   # signature block after the summary paragraph
 e = echoed(u)      # doctest after the summary paragraph → still an example
 s = sampled(e)     # code block under a heading → synthesized signature
+h = halved(s)      # named fence after the summary → still an example
 ```
 
 ## Type annotations

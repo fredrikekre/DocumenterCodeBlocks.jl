@@ -367,6 +367,17 @@ s = sampled(add_numbers(1, 2))
 """
 sampled(x) = x
 
+"""Halve `x`. The named fence below follows the summary paragraph directly,
+but the name puts it in a numbering series — example code, like a doctest in
+that position: it keeps its gutter and the tooltip signature is synthesized
+(with a build warning).
+
+```julia halved
+y = halved(add_numbers(2, 2))
+```
+"""
+halved(x) = x / 2
+
 """
     @twice(expr)
 

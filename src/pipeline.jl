@@ -404,13 +404,17 @@ function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
         end
         meta = _consume_blockmeta!(plugin, doc, page, kind, source)
         mod = meta === nothing ? nothing : meta.mod
-        # A doctest after the summary paragraph is example code, not a
-        # signature: a script-style `jldoctest` renders as `language-julia`
-        # like any other block, so only its fence — recorded by the ScanStep —
-        # tells the two apart. (A block that LEADS the docstring counts as the
-        # signature whatever its fence, as it always has.)
+        # A doctest or a series-named fence after the summary paragraph is
+        # example code, not a signature (`_is_example_block` on the AST side).
+        # Both render as `language-julia` like any other block, so only the
+        # fence — recorded by the ScanStep as a jldoctest crc / a BlockMeta
+        # name — tells them apart. (A block that LEADS the docstring counts as
+        # the signature whatever its fence, as it always has.)
         sigpos = kind === :block ? _docstring_sig_position(html, m.offset) : nothing
-        if sigpos === :first || (sigpos === :second && !(crc32c(source) in plugin.jldoctests))
+        if sigpos === :first || (
+                sigpos === :second && !(crc32c(source) in plugin.jldoctests) &&
+                    (meta === nothing || meta.name === nothing)
+            )
             # Signature headers have no gutter: no counter interaction.
             print(io, transform_signature_block(source, plugin, doc, page, tips, self_ids, mod))
             continue
