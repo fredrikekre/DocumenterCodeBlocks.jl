@@ -78,9 +78,9 @@ arity resolves to a different documented method still link.
 
 Build warnings prefixed `CodeBlocks: ` nudge toward tooltip-friendly (and
 generally better) docstrings: they fire — once per problem, and only for
-docstrings some code block references — when a docstring lacks a leading
-signature block or a prose first sentence, when the first sentence exceeds
-200 characters, and when a call's arity matches no documented method.
+docstrings some code block references — when a docstring lacks a signature
+block or a prose first sentence, when the first sentence exceeds 200
+characters, and when a call's arity matches no documented method.
 
 Pass to `makedocs(plugins=[CodeBlocks()])`.
 """

@@ -327,6 +327,46 @@ and `clone` itself stay plain.
 """
 clone(m::MyType; deep::Bool = false) = MyType(m.x)
 
+"""Double `x`. This docstring puts its summary paragraph ahead of the
+signature block:
+
+```julia
+y = summarize(x)
+```
+
+assigns the doubled value to `y`. The signature is the docstring's first code
+block either way, so it gets the header treatment (highlighted, no gutter, no
+permalink) and feeds the tooltip, with the brief taken from the first prose
+paragraph.
+"""
+summarize(x) = 2x
+
+"""Return `x` unchanged. The block below follows the summary paragraph
+directly, but a doctest is example code whatever its position: it keeps its
+gutter and its `# output` split, and the tooltip signature is synthesized.
+
+```jldoctest
+println(add_numbers(echoed(1), 2))
+
+# output
+
+3
+```
+"""
+echoed(x) = x
+
+"""Return `x` unchanged. The only code block here sits further down, under a
+section heading: it is an example, so it keeps its line-number gutter and the
+tooltip signature is synthesized (with a build warning).
+
+# Examples
+
+```julia
+s = sampled(add_numbers(1, 2))
+```
+"""
+sampled(x) = x
+
 """
     @twice(expr)
 

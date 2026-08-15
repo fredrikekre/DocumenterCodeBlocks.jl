@@ -78,6 +78,18 @@ w = wordy(1)       # first sentence >200 chars → brief truncated (build warnin
 Each of the imperfect cases above also emits a `CodeBlocks: ` build warning
 telling the docstring author what to fix.
 
+The signature is the docstring's first code block and the brief its first
+prose paragraph, whichever order the two appear in: `summarize` writes the
+summary paragraph first and the signature block after it. In `sampled` the
+only code block sits further down, under a heading — that one is an example,
+so its tooltip signature is synthesized.
+
+```julia
+u = summarize(2)   # signature block after the summary paragraph
+e = echoed(u)      # doctest after the summary paragraph → still an example
+s = sampled(e)     # code block under a heading → synthesized signature
+```
+
 ## Type annotations
 
 `qux` has two documented methods of the **same arity** that differ only in the

@@ -62,7 +62,7 @@ a reference with the enclosing docstring among its candidate targets is left
 unlinked — it (possibly) means the very thing the reader is looking at. A
 call whose arity resolves to a *different* documented method still links, so
 an example in [`foo(a, b)`](@ref)'s docstring that calls `foo(1)` links to
-[`foo(a)`](@ref). The **signature header** — a docstring's leading code
+[`foo(a)`](@ref). The **signature header** — a docstring's first code
 block — links its argument and return types the same way (see
 [`clone`](@ref)'s header in the API reference, which links `MyType` twice),
 while the documented name and the parameters stay plain.
