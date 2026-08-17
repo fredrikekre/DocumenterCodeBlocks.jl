@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.3.1] - Unreleased
+## [v1.4.0] - Unreleased
+
+### Added
+ - The block permalink button now copies the link to the clipboard on click,
+   confirmed by flashing the icon to a checkmark — matching the copy-code
+   button next to it. With lines selected in that block the copied link
+   targets the selection, otherwise the whole block. The button is now a
+   real anchor (`<a href="#c-…">`), so right-click → *Copy Link* and
+   middle-/ctrl-click open-in-new-tab work natively too. On insecure
+   contexts without clipboard access the click degrades to the previous
+   behavior (URL fragment only). ([#17])
 
 ### Fixed
  - Tooltip briefs no longer truncate the docstring's first sentence at
@@ -102,7 +112,7 @@ See [README.md](README.md) and the documentation for details.
 [v1.1.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.1.0
 [v1.2.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.2.0
 [v1.3.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.3.0
-[v1.3.1]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.3.1
+[v1.4.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.4.0
 [#3]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/3
 [#5]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/5
 [#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6
@@ -114,3 +124,4 @@ See [README.md](README.md) and the documentation for details.
 [#13]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/13
 [#14]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/14
 [#16]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/16
+[#17]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/17
