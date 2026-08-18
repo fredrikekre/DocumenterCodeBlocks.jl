@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+ - The permalink and copy-code icons are no longer misaligned on code
+   blocks inside docstrings. ([#23], [#25])
+ - The permalink icon's colors (rest and hover) now match the copy-code
+   icon next to it in all themes. ([#25])
+
 ## [v1.4.0] - 2026-08-20
 
 ### Added
@@ -125,3 +133,5 @@ See [README.md](README.md) and the documentation for details.
 [#14]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/14
 [#16]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/16
 [#17]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/17
+[#23]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/23
+[#25]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/25
