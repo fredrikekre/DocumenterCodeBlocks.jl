@@ -1,8 +1,8 @@
 # [Docstring warnings](@id warnings)
 
 The [tooltips](@ref tooltips) extract two things from every referenced
-docstring: the **signature** (the docstring's leading code block, the Julia
-convention) and a **brief** (the first sentence of the first paragraph). When
+docstring: the **signature** (the docstring's first code block) and a
+**brief** (the first sentence of its first prose paragraph). When
 a docstring doesn't provide them, the tooltip degrades gracefully — and the
 build emits a warning telling the author what to fix. The aim is to nudge
 docstrings toward a shape that works well in tooltips and reads well
@@ -11,14 +11,14 @@ everywhere else, too.
 The warnings are prefixed `CodeBlocks: `, fire **once per problem** per
 build, and only for docstrings that some code block actually references.
 
-## No leading signature block
+## No signature block
 
 The tooltip falls back to a signature synthesized from the method object:
 
 ```nohighlight
-┌ Warning: CodeBlocks: the docstring for `MyPackage.frob (Tuple{Int64})` does not start
-│ with a signature code block; tooltips fall back to the synthesized signature
-│ `frob(::Int64)`. Start the docstring with the indented signature (the Julia convention):
+┌ Warning: CodeBlocks: the docstring for `MyPackage.frob (Tuple{Int64})` has no signature
+│ code block; tooltips fall back to the synthesized signature `frob(::Int64)`. Give it
+│ one, either leading (the Julia convention) or directly after the summary paragraph:
 │     """
 │         frob(::Int64)
 │

@@ -288,9 +288,7 @@ function _preceded_by(html, offset, prefix)
     return true
 end
 
-# The first code block of a docstring is its signature header, rendered as the
-# first element of the docstring's `<section><div>` — where the `<section>` of
-# an aggregated entry may carry a per-docstring sub-anchor id. By convention
+# The first code block of a docstring is its signature header. By convention
 # the header is not example code — it gets no gutter and no id/permalink, and
 # it isn't always valid Julia (optional-argument brackets like `f(x[, y])`) —
 # but the argument and return types in it do get reference links (issue #11):
@@ -298,7 +296,24 @@ end
 # while `::`/`{}` type positions and the `-> T` return-type convention link.
 # The documented name itself never links: it is a self reference (candidate-
 # aware, so same-arity siblings count as self too).
-function _docstring_sig_prefix(html, offset)
+#
+# In the rendered docstring the header is the first element of the
+# `<section><div>` (`:first`) — or the one right after the paragraph holding
+# the summary (`:second`), the same two positions `_signature_node` accepts in
+# the AST; `nothing` anywhere else.
+function _docstring_sig_position(html, offset)
+    _section_div_at(html, offset) && return :first
+    # Paragraphs cannot nest, so the closest preceding `<p>` opens the one the
+    # block follows; nothing may sit between them.
+    _preceded_by(html, offset, "</p>") || return nothing
+    p = findprev("<p>", html, offset)
+    return (p !== nothing && _section_div_at(html, first(p))) ? :second : nothing
+end
+
+# Whether `offset` directly follows the `<section><div>` opening a docstring's
+# body — where the `<section>` of an aggregated entry may carry a per-docstring
+# sub-anchor id.
+function _section_div_at(html, offset)
     _preceded_by(html, offset, "<div>") || return false
     j = offset - ncodeunits("<div>") - 1   # the byte just before "<div>"
     (j >= 1 && codeunit(html, j) == UInt8('>')) || return false
@@ -389,7 +404,17 @@ function process_html(html::AbstractString, plugin::CodeBlocks, doc, page)
         end
         meta = _consume_blockmeta!(plugin, doc, page, kind, source)
         mod = meta === nothing ? nothing : meta.mod
-        if kind === :block && _docstring_sig_prefix(html, m.offset)
+        # A doctest or a series-named fence after the summary paragraph is
+        # example code, not a signature (`_is_example_block` on the AST side).
+        # Both render as `language-julia` like any other block, so only the
+        # fence — recorded by the ScanStep as a jldoctest crc / a BlockMeta
+        # name — tells them apart. (A block that LEADS the docstring counts as
+        # the signature whatever its fence, as it always has.)
+        sigpos = kind === :block ? _docstring_sig_position(html, m.offset) : nothing
+        if sigpos === :first || (
+                sigpos === :second && !(crc32c(source) in plugin.jldoctests) &&
+                    (meta === nothing || meta.name === nothing)
+            )
             # Signature headers have no gutter: no counter interaction.
             print(io, transform_signature_block(source, plugin, doc, page, tips, self_ids, mod))
             continue

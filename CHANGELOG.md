@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    contexts without clipboard access the click degrades to the previous
    behavior (URL fragment only). ([#17])
 
+### Changed
+ - A docstring's signature block is now its first code block, which the
+   summary paragraph may precede; the brief remains the first sentence of the
+   first prose paragraph, before or after that block. A code block further
+   down — under a `# Examples` heading, say — is still example code, and a
+   docstring without a signature block is still reported as such. ([#19])
+
 ### Fixed
  - Tooltip briefs no longer truncate the docstring's first sentence at
    mid-sentence periods. A `.`/`!`/`?` now only ends the sentence when the
@@ -125,3 +132,4 @@ See [README.md](README.md) and the documentation for details.
 [#14]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/14
 [#16]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/16
 [#17]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/17
+[#19]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/19

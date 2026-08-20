@@ -21,7 +21,7 @@ end
 DocMeta.setdocmeta!(
     DocumenterCodeBlocks,
     :DocTestSetup,
-    :(import DocumenterCodeBlocks: greet, add_numbers, MyType, foo);
+    :(import DocumenterCodeBlocks: greet, add_numbers, MyType, foo, echoed);
     recursive = true,
 )
 

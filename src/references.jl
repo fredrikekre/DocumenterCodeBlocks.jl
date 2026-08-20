@@ -216,9 +216,10 @@ function _target_info(doc, object, from, prettyurls, arity = nothing, plugin = n
     if info.synthesized
         _warn_once(
             plugin, "sig:" * name,
-            "the docstring for `$(name)` does not start with a signature code block; " *
+            "the docstring for `$(name)` has no signature code block; " *
                 "tooltips fall back to the synthesized signature `$(info.sig)`. " *
-                "Start the docstring with the indented signature (the Julia convention):\n" *
+                "Give it one, either leading (the Julia convention) or directly " *
+                "after the summary paragraph:\n" *
                 "    \"\"\"\n        $(info.sig)\n\n    ...\n    \"\"\"",
         )
     end
@@ -261,20 +262,49 @@ function _collapse_sig(sig)
     return String(strip(s))
 end
 
+# The signature code block of a docstring, as a MarkdownAST node, or `nothing`.
+# It is the docstring's first code block, which the summary paragraph may
+# precede. Nothing further down counts: a docstring section heading renders as
+# a paragraph of its own (Documenter's `recursive_heading_to_bold!`), so
+# requiring adjacency keeps `# Examples` code out. A block that does not lead
+# the docstring must also be example-free: unlabeled or a bare `julia` fence
+# (a series name marks example code), and not a doctest
+# (`Documenter.doctest_replace!` has by now relabeled
+# every `jldoctest` fence `julia`/`julia-repl`, so the ScanStep's record of
+# the original fences is what tells them apart). `_docstring_sig_position`
+# recognizes the same two positions in the rendered HTML.
+function _signature_node(md, plugin = nothing)
+    i = 0
+    for child in md.children
+        el = child.element
+        i += 1
+        if el isa Documenter.MarkdownAST.CodeBlock
+            i == 1 && return child
+            return _is_example_block(el, plugin) ? nothing : child
+        end
+        (i == 1 && el isa Documenter.MarkdownAST.Paragraph) || return nothing
+    end
+    return nothing
+end
+
+_is_example_block(el, plugin) =
+    !(isempty(el.info) || el.info == "julia") ||
+    (plugin !== nothing && crc32c(el.code) in plugin.jldoctests)
+
 # Signature, one-line label, and brief for a docstring, tolerating the many
 # shapes Julia docstrings come in:
-# - Signature: the LEADING code block of the relevant docstring(s). An
-#   aggregated entry — a bare `@docs Mod.f` — holds one docstring per method
-#   (mdasts/results/metas are parallel vectors); when the call arity is known,
-#   the entry is narrowed to the docstrings whose dispatch signature
-#   (`results[i].data[:typesig]`) accepts that arity, else ALL signature blocks
-#   show, joined by newlines. A code block that merely appears later (e.g. in
-#   Examples) is NOT a signature. Without any, the signature is synthesized
-#   from the documented method object itself.
+# - Signature: the signature block of the relevant docstring(s), see
+#   `_signature_node`. An aggregated entry — a bare `@docs Mod.f` — holds one
+#   docstring per method (mdasts/results/metas are parallel vectors); when the
+#   call arity is known, the entry is narrowed to the docstrings whose dispatch
+#   signature (`results[i].data[:typesig]`) accepts that arity, else ALL
+#   signature blocks show, joined by newlines. Without any, the signature is
+#   synthesized from the documented method object itself.
 # - Label: the first signature block collapsed to one line (multiline headers
 #   would otherwise show as just `foo(` in disambiguation lists).
-# - Brief: the first paragraph of the narrowed docstring(s), flattened to plain
-#   text and clipped to its first sentence; `nothing` without prose.
+# - Brief: the first prose paragraph of the narrowed docstring(s) — before or
+#   after the signature — flattened to plain text and clipped to its first
+#   sentence; `nothing` without prose.
 # Returns (sig, label, brief, narrowed, subidx, synthesized, brief_clipped) —
 # `narrowed` says arity selection actually dropped something (the caller keys
 # the tip payload on it), and `subidx` is the docstring's index within the
@@ -285,18 +315,14 @@ function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing)
     docs = @NamedTuple{sig::Union{Nothing, String}, brief::Union{Nothing, String}, clipped::Bool, typesig::Any, idx::Int}[]
     if docsnode !== nothing
         for (i, md) in enumerate(docsnode.mdasts)
-            sig = nothing
+            signode = _signature_node(md, plugin)
+            sig = signode === nothing ? nothing : String(strip(signode.element.code))
             brief = nothing
             clipped = false
-            first_block = true
             for child in md.children
-                el = child.element
-                if el isa Documenter.MarkdownAST.CodeBlock
-                    first_block && (sig = String(strip(el.code)))
-                elseif el isa Documenter.MarkdownAST.Paragraph && brief === nothing
+                if child.element isa Documenter.MarkdownAST.Paragraph && brief === nothing
                     brief, clipped = _first_sentence(_plain_text(child)...)
                 end
-                first_block = false
             end
             typesig = i <= length(docsnode.results) ?
                 get(docsnode.results[i].data, :typesig, Union{}) : Union{}

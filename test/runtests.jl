@@ -348,12 +348,17 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             include(joinpath(docsite, "make.jl"))
         end
         cb = [String(l.message) for l in logger.logs if startswith(String(l.message), "CodeBlocks: ")]
-        @test length(cb) == 5
+        @test length(cb) == 8
         @test any(contains("`DocumenterCodeBlocks.bar`"), cb)             # no signature block
         @test any(contains("`DocumenterCodeBlocks.baz` has no prose"), cb)
         @test any(contains("`DocumenterCodeBlocks.wordy`"), cb)           # clipped brief
         @test any(contains("neg"), cb)                                    # typed, synthesized
         @test any(contains("takes 4 arguments"), cb)                      # arity gap
+        @test any(contains("sampled"), cb)        # code block under a heading
+        @test any(contains("echoed"), cb)         # doctest after the summary
+        @test any(contains("halved"), cb)         # named fence after the summary
+        # A signature block after the summary paragraph is found, not reported.
+        @test !any(contains("summarize"), cb)
         other = [String(l.message) for l in logger.logs if !startswith(String(l.message), "CodeBlocks: ")]
         @test isempty(other)   # the docsite build itself must be warning-clean
 
@@ -501,6 +506,49 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             # (the candidate targets include the enclosing docstring).
             quxs = sig_header(docstring_details(index, "DocumenterCodeBlocks.qux-Tuple{String}"))
             @test !occursin("julia-ref", quxs)
+        end
+
+        @testset "signature block after the summary" begin
+            # `summarize` puts its summary paragraph before the signature
+            # block: the block is still the docstring's first, so it gets the
+            # header treatment (highlighted, no id, no gutter) and the
+            # documented name stays a self reference.
+            d = docstring_details(index, "DocumenterCodeBlocks.summarize")
+            m = match(
+                r"<section[^>]*><div><p>.*?</p><pre><code class=\"nohighlight hljs\">(.*?)</code></pre>"s,
+                d,
+            )
+            @test m !== nothing
+            @test occursin("<span class=\"julia-funcall\">summarize</span>", m.captures[1])
+            @test !occursin("julia-ref", m.captures[1])
+            # Its tooltip shows that block, not a synthesized signature, with
+            # the brief from the paragraph above it.
+            @test occursin(
+                "data-for=\"../#DocumenterCodeBlocks.summarize\">" *
+                    "<code class=\"ref-tip-sig nohighlight\">y <span class=\"julia-keyword\">=</span> " *
+                    "<span class=\"julia-funcall\">summarize</span>(x)</code>" *
+                    "<p class=\"ref-tip-brief\">Double x.",
+                refs,
+            )
+            # `sampled`'s only code block sits under a heading: an example,
+            # keeping its gutter and permalink id (and warning above).
+            sampled = docstring_details(index, "DocumenterCodeBlocks.sampled")
+            @test occursin("<pre id=\"c-", sampled)
+            @test occursin("class=\"nohighlight hljs line-numbers\"", sampled)
+            # `echoed`'s doctest sits in the signature position but renders as
+            # a script-style doctest: gutter, and no highlighting past
+            # `# output`.
+            echoed = docstring_details(index, "DocumenterCodeBlocks.echoed")
+            @test occursin("class=\"nohighlight hljs line-numbers\"", echoed)
+            out = match(r"# output(.{0,80})"s, echoed)
+            @test out !== nothing && !occursin("julia-", out.captures[1])
+            # A NAMED fence in the signature position joins a numbering
+            # series: example code (the AST side sees the name on the fence,
+            # the HTML side the ScanStep's BlockMeta), so it too keeps its
+            # gutter and permalink id (and warning above).
+            halved = docstring_details(index, "DocumenterCodeBlocks.halved")
+            @test occursin("<pre id=\"c-", halved)
+            @test occursin("class=\"nohighlight hljs line-numbers\"", halved)
         end
 
         @testset "self references in docstrings" begin
