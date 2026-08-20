@@ -14,7 +14,7 @@
   --ln-btn: #222;                    /* = copy-button rest color */
   --ln-btn-hover: #2e63b8;           /* = copy-button hover color */
   --ln-btn-hover-bg: rgba(34, 34, 34, 0.1);
-  --ln-copied: #22863a;                  /* permalink copied-confirmation check */
+  --ln-copied: #259a12;                  /* = copy-button.success color */
 }
 html.theme--documenter-dark {
   --ln-bg: #282f2f;
@@ -27,7 +27,7 @@ html.theme--documenter-dark {
   --ln-btn: #fff;                    /* = copy-button rest color */
   --ln-btn-hover: #1abc9c;           /* = copy-button hover color */
   --ln-btn-hover-bg: rgba(255, 255, 255, 0.1);
-  --ln-copied: #3fb950;
+  --ln-copied: #259a12;
 }
 /* Catppuccin themes: --ln-bg matches each theme's pre background (mantle),
  * --ln-border its pre border (surface2), accents from the catppuccin palette. */
