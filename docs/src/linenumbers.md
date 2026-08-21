@@ -12,6 +12,9 @@ style. Try it on the block below:
 - click the **link button** (top right of the block) to **copy the link** —
   to the current line selection if you have one in that block, else to the
   whole block; the icon flashes a checkmark to confirm,
+- click the **copy button** next to it to **copy the code** — likewise just
+  the selected lines if you have a selection in that block, else the whole
+  block,
 - click anywhere outside the block to **deselect**.
 
 The selection is reflected in the URL fragment (`#c-1a2b3c4d-L3-L7`), so a

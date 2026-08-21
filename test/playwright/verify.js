@@ -277,14 +277,17 @@ function check(name, ok, detail) {
   }
 
   // A selection in ANOTHER block is not this block's: copy the whole block.
-  const elsewhere = await page.evaluate((id) => {
-    const p = Array.from(document.querySelectorAll("code.line-numbers")).find(
-      (c) => c.parentElement.id !== id && c.querySelectorAll(".line").length >= 2
-    );
-    p.parentElement.scrollIntoView({ block: "center" });
-    const r0 = p.querySelectorAll(".line-num")[0].getBoundingClientRect();
-    return { x: r0.left + r0.width / 2, y: r0.top + r0.height / 2 };
-  }, ID);
+  // (computed at use time: scrolling into view shifts the coordinates)
+  const elsewherePos = () =>
+    page.evaluate((id) => {
+      const p = Array.from(document.querySelectorAll("code.line-numbers")).find(
+        (c) => c.parentElement.id !== id && c.querySelectorAll(".line").length >= 2
+      );
+      p.parentElement.scrollIntoView({ block: "center" });
+      const r0 = p.querySelectorAll(".line-num")[0].getBoundingClientRect();
+      return { x: r0.left + r0.width / 2, y: r0.top + r0.height / 2 };
+    }, ID);
+  let elsewhere = await elsewherePos();
   await page.mouse.click(elsewhere.x, elsewhere.y); // select a line elsewhere
   await page.click("#" + ID + " .block-link");
   r = await state();
@@ -293,6 +296,79 @@ function check(name, ok, detail) {
     r.hash === "#" + ID,
     r.hash
   );
+  await reset();
+
+  // ---- Documenter's copy button copies just the selected lines (#26) ----
+  // Our capture-phase hook only kicks in with a selection in THIS block; the
+  // other cases must still go through Documenter's own handler (whole block).
+  const COPY = "#" + ID + " .copy-button";
+  const copyBtn = await page.evaluate((sel) => !!document.querySelector(sel), COPY);
+  check("Documenter copy button is present", copyBtn);
+  const blockText = await page.evaluate((id) => document.getElementById(id).innerText, ID);
+  const linesText = (a, b) =>
+    page.evaluate(
+      ([id, a, b]) =>
+        Array.from(document.getElementById(id).querySelectorAll(".line"))
+          .slice(a - 1, b)
+          .map((l) => l.textContent)
+          .join("\n"),
+      [ID, a, b]
+    );
+  const copyFeedback = () =>
+    page
+      .waitForSelector(COPY + ".success", { timeout: 2000 })
+      .then(() => true)
+      .catch(() => false);
+  const resetCopyBtn = () =>
+    page.evaluate((sel) => {
+      const b = document.querySelector(sel);
+      b.classList.add("fa-copy");
+      b.classList.remove("success", "fa-check", "error", "fa-xmark");
+    }, COPY);
+
+  // Lines 2-4 selected: copy button copies exactly those lines, keeps selection.
+  pos = await gutterPos(2);
+  await page.mouse.click(pos.x, pos.y);
+  pos = await gutterPos(4);
+  await page.keyboard.down("Shift");
+  await page.mouse.click(pos.x, pos.y);
+  await page.keyboard.up("Shift");
+  await page.hover("#" + ID);
+  await page.click(COPY);
+  check("copy with selection shows copied feedback", await copyFeedback());
+  r = await state();
+  check("copy keeps the line selection", r.hl === 3 && /-L2-L4$/.test(r.hash), r.hash);
+  clip = await readClipboard();
+  if (clip !== null) {
+    const expected = await linesText(2, 4);
+    check("clipboard holds only the selected lines", clip === expected, JSON.stringify(clip));
+  }
+  await resetCopyBtn();
+
+  // No selection: Documenter's own handler copies the whole block.
+  await reset();
+  await page.hover("#" + ID);
+  await page.click(COPY);
+  check("copy without selection shows copied feedback", await copyFeedback());
+  clip = await readClipboard();
+  if (clip !== null) {
+    check("clipboard holds the whole block", clip === blockText, JSON.stringify(clip));
+  }
+  await resetCopyBtn();
+
+  // Selection in ANOTHER block: this block still copies in full.
+  elsewhere = await elsewherePos();
+  await page.mouse.click(elsewhere.x, elsewhere.y);
+  r = await state();
+  check("selection elsewhere: set up", r.hl === 1 && !r.hash.startsWith("#" + ID), r.hash);
+  await page.hover("#" + ID);
+  await page.click(COPY);
+  check("selection elsewhere: copy shows copied feedback", await copyFeedback());
+  clip = await readClipboard();
+  if (clip !== null) {
+    check("selection elsewhere: clipboard holds the whole block", clip === blockText, JSON.stringify(clip));
+  }
+  await resetCopyBtn();
   await reset();
 
   // ---- hash restore on fresh load ----
