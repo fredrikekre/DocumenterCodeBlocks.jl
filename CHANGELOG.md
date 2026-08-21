@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.5.0] - Unreleased
+
+### Added
+ - Documenter's copy-code button now copies only the selected lines when the
+   block has a line selection (click/shift-click/drag in the gutter), matching
+   the permalink button next to it. Without a selection it copies the whole
+   block as before. ([#26], [#27])
 
 ### Fixed
  - The permalink and copy-code icons are no longer misaligned on code
@@ -121,6 +127,7 @@ See [README.md](README.md) and the documentation for details.
 [v1.2.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.2.0
 [v1.3.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.3.0
 [v1.4.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.4.0
+[v1.5.0]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/releases/tag/v1.5.0
 [#3]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/3
 [#5]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/5
 [#6]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/6
@@ -135,3 +142,5 @@ See [README.md](README.md) and the documentation for details.
 [#17]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/17
 [#23]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/23
 [#25]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/25
+[#26]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/26
+[#27]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/27
