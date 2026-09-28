@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.5.1] - Unreleased
+## [v1.5.1] - 2026-09-28
 
 ### Fixed
  - The "no documented method takes N arguments" build warning is no longer
@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    code block calling the plain two-argument `Base.isapprox` while the package
    documents only its own extension methods. That docstring is Base's to
    provide, not the package author's, so the report is demoted to a `@debug`
-   message. ([#31])
+   message. ([#31], [#32])
 
 ## [v1.5.0] - 2026-08-21
 
@@ -156,3 +156,4 @@ See [README.md](README.md) and the documentation for details.
 [#26]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/26
 [#27]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/27
 [#31]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/31
+[#32]: https://github.com/fredrikekre/DocumenterCodeBlocks.jl/issues/32
