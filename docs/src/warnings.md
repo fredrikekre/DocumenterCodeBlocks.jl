@@ -57,6 +57,6 @@ the example is stale:
 │ missing its docstring?
 ```
 
-(Documenter itself resolves the equivalent `[`frob(a, b, c, d)`](@ref)`
+(Documenter itself resolves the equivalent ```[`frob(a, b, c, d)`](@ref)```
 silently to the first documented method — the plugin links the same way, it
 just tells you about it.)

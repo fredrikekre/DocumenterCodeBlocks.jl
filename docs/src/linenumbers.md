@@ -95,7 +95,7 @@ line_counter = :restart
 A third mode, `line_counter = :named`, keeps one counter **per named
 series**: blocks that share a name — `@example tutorial`, `@repl tutorial`,
 `jldoctest tutorial`, or a plain fence with a second token like
-```` ```julia tutorial ```` — continue each other (across block kinds and
+````` ```julia tutorial ````` — continue each other (across block kinds and
 across unrelated blocks in between), while unnamed blocks restart. This
 pairs naturally with Documenter's named `@example`/`@repl` sandboxes, where
 same-named blocks already share one session:

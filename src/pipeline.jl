@@ -128,7 +128,7 @@ end
 
 # The block's series name for `line_counter = :named`: the second token of the
 # fence info string (`jldoctest name`, `@example name`, `@repl name`, or a
-# plain ```` ```julia name ```` — the writer renders only the first token, so
+# plain ````` ```julia name ````` — the writer renders only the first token, so
 # the name never shows up in the output). Token syntax `[^\s;]+` matches
 # Documenter's own name parsing; `nothing` for an unnamed block.
 function _fence_name(info)
