@@ -47,6 +47,8 @@ DocumenterCodeBlocks.fit(X::AbstractMatrix, w::AbstractVector)
 DocumenterCodeBlocks.process(data::AbstractMatrix, weights::AbstractVector)
 DocumenterCodeBlocks.process(data::AbstractVector)
 DocumenterCodeBlocks.clone
+Base.isapprox(m::DocumenterCodeBlocks.MyType, x, y)
+Base.isapprox(m::DocumenterCodeBlocks.MyType, x, y, z)
 DocumenterCodeBlocks.@twice
 DocumenterCodeBlocks.@w_str
 ```

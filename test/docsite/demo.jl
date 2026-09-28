@@ -328,6 +328,27 @@ and `clone` itself stay plain.
 clone(m::MyType; deep::Bool = false) = MyType(m.x)
 
 """
+    isapprox(m::MyType, x, y)
+
+Approximate equality of `x` and `y` in the context of `m`. Extends
+`Base.isapprox` with a leading context argument — the ManifoldsBase pattern
+(issue #31): the package documents only its own extension methods, while code
+blocks may still call the plain two-argument **Base** method. That call must
+not warn about a missing docstring (it is Base's docstring, not this
+package's), only emit a `@debug` message.
+"""
+Base.isapprox(m::MyType, x, y) = isapprox(x, y)
+
+"""
+    isapprox(m::MyType, x, y, z)
+
+Approximate equality of `x`, `y`, and `z` in the context of `m`. A second
+documented extension method, so the binding `Base.isapprox` has multiple
+documented objects and two-argument call sites reach the arity filter.
+"""
+Base.isapprox(m::MyType, x, y, z) = isapprox(x, y) && isapprox(y, z)
+
+"""
     @twice(expr)
 
 Evaluate `expr` twice and return the value of the second evaluation. A
