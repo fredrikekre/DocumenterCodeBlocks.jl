@@ -63,7 +63,7 @@ line_counter = :continue
   (`julia`, `julia-repl`, executed `@repl`), tutorial-style; `:named` keeps
   one counter **per named series** — blocks sharing a name (`@example name`,
   `@repl name`, `jldoctest name`, or a second fence token like
-  ` ```julia name `) continue each other, while unnamed blocks restart. Like
+  ````` ```julia name `````) continue each other, while unnamed blocks restart. Like
   `@meta`, the setting applies from its position to the end of the page (or
   the next `@codeblocks` block). Blocks inside docstrings are their own page:
   they always start at 1 and do not advance any counter.
