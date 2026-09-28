@@ -141,17 +141,78 @@ function _candidate_objects(doc, binding, typesig, object, arity, plugin = nothi
     if arity !== nothing
         filtered = [o for o in objects if _accepts_arity(o.signature, arity)]
         if isempty(filtered)   # keep all (be safe), but tell the author
+            extmod = _external_dispatch(doc, binding, arity)
+            msg_appendix = if extmod === nothing
+                "Is a method missing its docstring?"
+            else
+                "The call dispatches outside the documented modules " *
+                    "(`$(extmod)`), so the docstring is not this package's " *
+                    "to add."
+            end
             _warn_once(
                 plugin, "arity:" * string(binding) * ":" * _arity_key(arity),
                 "no documented method of `$(binding)` takes $(_arity_str(arity)), " *
                     "but a code block calls it that way; the tooltip lists all " *
-                    "documented methods. Is a method missing its docstring?",
+                    "documented methods. " * msg_appendix,
+                debug = extmod !== nothing,
             )
         else
             objects = filtered
         end
     end
     return objects
+end
+
+# The module owning a method that a call with `arity` positional arguments
+# could dispatch to, when EVERY such method lies OUTSIDE the documented modules
+# (`makedocs(modules = ...)`); `nothing` otherwise — some matching method is the
+# package's own (then the nudge stands: the author can document it), no method
+# matches at all, the arity is inexact (splat lower bound), the binding does
+# not resolve, or there is no module list to compare against. A package that
+# extends e.g. `Base.isapprox` documents only its own methods, so a code block
+# calling the plain two-argument Base method finds no local docstring — but
+# that docstring is Base's to provide, not the author's, so the
+# missing-docstring nudge is demoted to `@debug` (#31).
+function _external_dispatch(doc, binding, arity)
+    arity isa Int || return nothing
+    isempty(doc.blueprint.modules) && return nothing
+    f = try
+        DocSystem.resolve(binding)
+    catch
+        return nothing
+    end
+    ms = try
+        methods(f)
+    catch
+        return nothing
+    end
+    extmod = nothing
+    for m in ms
+        _method_takes(m, arity) || continue
+        _in_documented(m.module, doc.blueprint.modules) && return nothing
+        extmod === nothing && (extmod = m.module)
+    end
+    return extmod
+end
+
+# Whether method `m` can take `arity` positional arguments.
+function _method_takes(m::Method, arity::Int)
+    sig = Base.unwrap_unionall(m.sig)
+    sig isa DataType || return false
+    params = sig.parameters[2:end]   # drop the function type itself
+    isva = !isempty(params) && Base.isvarargtype(params[end])
+    return isva ? arity >= length(params) - 1 : arity == length(params)
+end
+
+# Whether `mod` is (a submodule of) one of the documented modules.
+function _in_documented(mod::Module, modules)
+    while true
+        mod in modules && return true
+        parent = parentmodule(mod)
+        parent === mod && return false
+        mod = parent
+    end
+    return
 end
 
 # Whether a documented signature type can take `arity` positional arguments
@@ -184,11 +245,17 @@ end
 # the tooltips (and Julia docs in general) rely on, so every message states
 # the concrete fix. Deduplicated per build via plugin.warned — one report per
 # docstring problem, not one per page/reference — and only emitted for
-# docstrings some code block actually references.
-function _warn_once(plugin, key::AbstractString, msg::AbstractString)
+# docstrings some code block actually references. `debug = true` demotes the
+# report to `@debug` for problems the author cannot fix (e.g. the missing
+# docstring belongs to Base, #31) — kept around for troubleshooting.
+function _warn_once(plugin, key::AbstractString, msg::AbstractString; debug::Bool = false)
     (plugin === nothing || key in plugin.warned) && return
     push!(plugin.warned, key)
-    @warn string("CodeBlocks: ", msg)
+    if debug
+        @debug string("CodeBlocks: ", msg)
+    else
+        @warn string("CodeBlocks: ", msg)
+    end
     return
 end
 
@@ -211,7 +278,7 @@ _arity_str(arity::AtLeast) = string("at least ", arity.n, arity.n == 1 ? " argum
 # arity need different narrowed tips for the SAME href.
 function _target_info(doc, object, from, prettyurls, arity = nothing, plugin = nothing)
     docsnode = get(doc.internal.objects, object, nothing)
-    info = _sig_and_brief(docsnode, object, arity, plugin)
+    info = _sig_and_brief(docsnode, object, arity, plugin, doc)
     name = _object_str(object)
     if info.synthesized
         _warn_once(
@@ -281,7 +348,7 @@ end
 # entry when the narrowing singled out exactly one (else `nothing`), so the
 # caller can link to its sub-anchor; the last two feed the docstring-quality
 # warnings.
-function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing)
+function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing, doc = nothing)
     docs = @NamedTuple{sig::Union{Nothing, String}, brief::Union{Nothing, String}, clipped::Bool, typesig::Any, idx::Int}[]
     if docsnode !== nothing
         for (i, md) in enumerate(docsnode.mdasts)
@@ -307,11 +374,20 @@ function _sig_and_brief(docsnode, object, arity = nothing, plugin = nothing)
     if arity !== nothing && length(docs) > 1
         matching = [d for d in docs if _accepts_arity(d.typesig, arity)]
         if isempty(matching)
+            extmod = doc === nothing ? nothing :
+                _external_dispatch(doc, object.binding, arity)
+            msg_appendix = if extmod === nothing
+                "Is a method missing its docstring?"
+            else
+                "The call dispatches outside the documented modules " *
+                    "(`$(extmod)`), so the docstring is not this package's to add."
+            end
             _warn_once(
                 plugin, "arity:" * _object_str(object) * ":" * _arity_key(arity),
                 "no docstring in the aggregated entry for `$(_object_str(object))` " *
                     "documents a method taking $(_arity_str(arity)); the tooltip " *
-                    "shows all signatures. Is a method missing its docstring?",
+                    "shows all signatures. " * msg_appendix,
+                debug = extmod !== nothing,
             )
         elseif length(matching) < length(docs)
             docs = matching

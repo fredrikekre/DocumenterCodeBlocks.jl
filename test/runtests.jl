@@ -295,6 +295,27 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         @test DCB._arity_key(DCB.AtLeast(3)) == "3+"
     end
 
+    @testset "external dispatch" begin
+        # A duck-typed doc is enough: _external_dispatch only touches
+        # doc.blueprint.modules.
+        fakedoc = (; blueprint = (; modules = Set{Module}([DocumenterCodeBlocks])))
+        isapprox_b = Documenter.DocSystem.binding(Base, :isapprox)
+        # All 2-argument isapprox methods are owned outside the documented
+        # modules (Base, LinearAlgebra, Dates, …).
+        extmod = DCB._external_dispatch(fakedoc, isapprox_b, 2)
+        @test extmod isa Module && !(extmod in fakedoc.blueprint.modules)
+        # No 0-argument method at all → nothing (the warning stays).
+        @test DCB._external_dispatch(fakedoc, isapprox_b, 0) === nothing
+        # Dispatch landing inside a documented module → nothing.
+        slug_b = Documenter.DocSystem.binding(DocumenterCodeBlocks, :resolve_reference)
+        @test DCB._external_dispatch(fakedoc, slug_b, 3) === nothing
+        # Splat lower bounds have unknowable dispatch → nothing.
+        @test DCB._external_dispatch(fakedoc, isapprox_b, DCB.AtLeast(1)) === nothing
+        # Without a modules list there is nothing to compare against.
+        emptydoc = (; blueprint = (; modules = Set{Module}()))
+        @test DCB._external_dispatch(emptydoc, isapprox_b, 2) === nothing
+    end
+
     @testset "tooltip text helpers" begin
         @test DCB._collapse_sig("foo(\n    a, b, c, d\n)") == "foo(a, b, c, d)"
         @test DCB._collapse_sig("fit(\n    x::A,\n    y::B,\n)") == "fit(x::A, y::B)"
@@ -354,6 +375,9 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
         @test any(contains("`DocumenterCodeBlocks.wordy`"), cb)           # clipped brief
         @test any(contains("neg"), cb)                                    # typed, synthesized
         @test any(contains("takes 4 arguments"), cb)                      # arity gap
+        # The 2-argument `isapprox` call dispatches to a Base-owned method:
+        # demoted to @debug, so it must NOT appear among the warnings (#31).
+        @test !any(contains("isapprox"), cb)
         other = [String(l.message) for l in logger.logs if !startswith(String(l.message), "CodeBlocks: ")]
         @test isempty(other)   # the docsite build itself must be warning-clean
 
@@ -387,8 +411,10 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
                 r"DocumenterCodeBlocks<span class=\"julia-operator\">\.</span><a class=\"julia-ref\" href=\"[^\"]*foo-Tuple\{Any\}\"[^>]*><span class=\"julia-funcall\">foo</span></a>",
                 refs,
             )
-            # `m::MyType` annotation + `MyType(3)` callee both link.
-            @test length(link_hrefs(refs, "MyType")) == 2
+            # `m::MyType` annotation + `MyType(3)` + `MyType(1)` (isapprox
+            # section) all link. (Match the full fragment: isapprox hrefs
+            # contain `MyType` inside their `Tuple{MyType, …}` typesig too.)
+            @test length(link_hrefs(refs, "#DocumenterCodeBlocks.MyType")) == 3
             # An undocumented name stays plain.
             @test !occursin("undocumented_helper</a>", refs)
         end
@@ -425,6 +451,12 @@ const SUBANCHORS = hasfield(Documenter.DocsNode, :subslugs)
             @test sort(targets) == [3, 5, 6, 6]
             # Arity pruning follows the candidates for the primary link.
             @test !isempty(link_hrefs(refs, "process-Tuple{AbstractVector}"))
+            # A 2-argument call of the extended `Base.isapprox` still links
+            # (both documented extension methods listed), and the arity-3 call
+            # links the matching extension — but the 2-argument case emits no
+            # build warning: Base owns the called method (#31, asserted on the
+            # captured log above).
+            @test length(link_hrefs(refs, "isapprox")) == 2
         end
 
         @testset "tooltip payload" begin

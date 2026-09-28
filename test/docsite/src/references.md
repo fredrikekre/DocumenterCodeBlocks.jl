@@ -116,6 +116,20 @@ P = process(rand(3, 3), ones(3))   # arity 2 → the multi-line matrix signature
 bad = measure(1, 2, 3, 4)          # no 4-argument method documented → build warning
 ```
 
+## Extending a Base function
+
+`Base.isapprox` is extended with documented context-taking methods (the
+ManifoldsBase pattern, issue #31). A call to the plain **two-argument Base
+method** finds no matching local docstring either — but that docstring is
+Base's to provide, not this package's, so it must **not** produce a build
+warning (only a `@debug` message); the tooltip lists the documented extension
+methods as usual.
+
+```julia
+near = isapprox(1.0, 1.0 + 1.0e-12)    # dispatches to Base → no build warning
+ctx = isapprox(MyType(1), 1.0, 1.0)    # arity 3 → links the extension method
+```
+
 ## Aggregated and multiline docstrings
 
 `combine` is documented as one **aggregated** entry (a bare `@docs` name), so
